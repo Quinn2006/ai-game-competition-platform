@@ -1,0 +1,17 @@
+*.bak
+*.tmp
+*.log
+preview/
+tmp/
+.env
+.env.*
+.credentials.yaml
+credentials.json
+credentials.yaml
+secrets.json
+secrets.yaml
+*.pem
+*.key
+node_modules/
+dist/
+build/
