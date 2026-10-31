@@ -1,0 +1,14 @@
+[
+  {
+    "source": "C:\\Users\\wkq17\\Documents\\Codex\\2026-10-31\\referenced-chatgpt-conversation-this-is-an\\outputs\\AI小游戏比赛平台正式项目文档_v1.1.docx",
+    "sha256": "5b15cfdab304bb18c55ee1bdca2cd25a2d1b49029ef5703402b575ca74df5519",
+    "paragraphs_and_rows": 350,
+    "method": "Python stdlib zipfile + ElementTree; body paragraphs and table cells; no images/headers/rendering"
+  },
+  {
+    "source": "C:\\Users\\wkq17\\Documents\\Codex\\2026-10-31\\referenced-chatgpt-conversation-this-is-an\\outputs\\附录A_需求决策与待确认清单_v1.1.docx",
+    "sha256": "c0086721b61439b520b3c18af08dd1c0770f380050c642a4adfb58468aa60d4d",
+    "paragraphs_and_rows": 255,
+    "method": "Python stdlib zipfile + ElementTree; body paragraphs and table cells; no images/headers/rendering"
+  }
+]

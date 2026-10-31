@@ -1,0 +1,11 @@
+{
+  "name": "ai-game-platform-phase-zero",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "prototype": "node prototypes/server.mjs",
+    "check:baseline": "node scripts/check-baseline.mjs"
+  }
+}
