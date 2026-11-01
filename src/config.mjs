@@ -46,8 +46,10 @@ export function loadConfig(env = process.env) {
     if (!/^[a-z0-9][a-z0-9-]{2,62}$/.test(bucket) || !bucket.endsWith(`-${environment}`)) fail('OBJECT_STORAGE_BUCKET');
   }
   const sessionSecret = env.SESSION_SECRET || null;
+  const localMailPreview = env.LOCAL_MAIL_PREVIEW === '1';
+  if (localMailPreview && environment !== 'development') fail('LOCAL_MAIL_PREVIEW');
   if (sessionSecret && Buffer.byteLength(sessionSecret) < 32) fail('SESSION_SECRET');
   if (production && (!databaseUrl || !endpoint || !sessionSecret || !env.MAIN_ORIGIN || !env.GAME_ORIGIN)) fail('production dependencies');
   return Object.freeze({ environment, port, host, mainOrigin, gameOrigin,
-    databaseUrl, databaseTls, storage: Object.freeze({ endpoint, bucket }), sessionSecret });
+    databaseUrl, databaseTls, storage: Object.freeze({ endpoint, bucket }), sessionSecret, localMailPreview });
 }

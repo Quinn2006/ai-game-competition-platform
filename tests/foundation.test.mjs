@@ -75,12 +75,12 @@ test('HTTP liveness, unavailable readiness, method/route errors and query secrec
 });
 
 test('HTTP readiness checks schema identity and storage; dependency exceptions remain private', async t => {
-  const [migration] = await migrationFiles();
+  const migrations = await migrationFiles();
   let fail = false;
   const app = createApp({ config: loadConfig({ APP_ENV: 'test' }), log: () => {},
     database: { query: async sql => {
       if (fail) throw new Error('password=DO_NOT_LOG');
-      return { rows: sql.includes('schema_migrations') ? [migration] : [{ environment: 'test' }] };
+      return { rows: sql.includes('schema_migrations') ? migrations : [{ environment: 'test' }] };
     } }, storage: { health: async () => true } });
   app.listen(0, '127.0.0.1');
   await once(app, 'listening');
