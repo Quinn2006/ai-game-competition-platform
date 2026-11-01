@@ -84,6 +84,19 @@ export function createIdentityService({ database, secret, mail, clock = () => Da
   }
 
   const service = {
+    async authorized(context, work, proof = null, resourceId = null) {
+      return transaction(async c => {
+        const user = await session(c, context.sessionToken);
+        if (proof !== null) {
+          if (!user.roles.includes('admin') || !validToken(proof)) fail('FORBIDDEN', 403);
+          const consumed = await c.query(`DELETE FROM platform.identity_tokens WHERE token_hash=$1 AND account_id=$2 AND purpose='revalidate'
+            AND action='admin.dangerous' AND resource_id=$3 AND session_hash=$4 AND expires_at>$5 RETURNING token_hash`,
+          [digest(proof), user.id, resourceId, digest(context.sessionToken), new Date(clock())]);
+          if (!consumed.rowCount) fail('FORBIDDEN', 403);
+        }
+        return work(c, user);
+      });
+    },
     async run(action, input = {}, context) {
       try { return await service.execute(action, input, context); }
       catch (e) {

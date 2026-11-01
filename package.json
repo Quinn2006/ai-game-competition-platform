@@ -19,6 +19,7 @@
     "check:baseline": "node scripts/check-baseline.mjs"
   },
   "dependencies": {
-    "pg": "8.23.1"
+    "pg": "8.23.1",
+    "qrcode": "1.5.4"
   }
 }
