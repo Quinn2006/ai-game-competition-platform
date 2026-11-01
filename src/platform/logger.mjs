@@ -1,6 +1,6 @@
 // Allowlisted fields only. No raw exceptions, URLs, headers, bodies, IP or UA.
 const fields = new Set(['requestId', 'method', 'route', 'status', 'durationMs', 'code', 'environment']);
-const events = new Set(['http.request', 'app.started', 'app.stopped', 'app.failed', 'database.error', 'migration.finished']);
+const events = new Set(['http.request', 'app.started', 'app.stopped', 'app.failed', 'database.error', 'migration.finished', 'identity.cleanup_failed']);
 export function createLogger(write = line => process.stdout.write(line)) {
   return (event, data = {}) => {
     if (!events.has(event)) throw new Error('Unknown log event');

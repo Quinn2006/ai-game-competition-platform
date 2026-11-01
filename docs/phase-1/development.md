@@ -1,5 +1,7 @@
 # 阶段 1 开发与验收手册
 
+2026-11-01 更新：阶段 2 已追加 003_identity、004_audit_retention；up 当前应用四条迁移，down 每次仅回退最新一条且拒绝对应非空数据。已在便携 PostgreSQL 18.6 上实测。当前身份服务启动以 docs/phase-2/identity.md 为准，下文保留阶段 1 环境说明。
+
 前提：Node.js 24、npm，工作目录 `D:\AI-project\Codex-project1`。没有 PostgreSQL 也能启动骨架；业务功能与完整就绪尚不可用。
 
 ## 启动及本地检查
@@ -54,9 +56,9 @@ npm run db:migrate
 npm run db:status
 ```
 
-应用启动不隐式迁移。空库状态应为 []；up 后为 [001_foundation]；重复 up 不重复建表。SQL 事务失败必须完整回退。首个迁移只建立 schema、环境身份和一般错误审计，未涉及 T 项业务表。
+应用启动不隐式迁移。空库状态应为 []；当前 up 后为 [001_foundation, 002_security_audit]；重复 up 不重复建表。SQL 事务失败必须完整回退。首个迁移只建立 schema、环境身份和一般错误审计；阶段 2 追加安全审计迁移，见 docs/phase-2/development.md。
 
-回退会删除空基础 schema，保留迁移账本表；有审计记录则拒绝。真实执行前须核对绝对目标（数据库服务器、数据库名和环境）、做备份并获得删除操作确认。本轮未执行此操作。已确认仅为空开发库时：
+每次回退仅撤销最新一条迁移：002 删除空安全审计表；随后 001 删除空基础 schema，保留迁移账本表。对应表有审计记录则拒绝。真实执行前须核对绝对目标（数据库服务器、数据库名和环境）、做备份并获得删除操作确认。本轮未执行此操作。已确认仅为空开发库时：
 
 ```powershell
 $env:CONFIRM_EMPTY_ROLLBACK = 'development'

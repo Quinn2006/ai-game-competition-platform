@@ -1,8 +1,13 @@
 # AI 小游戏比赛平台
 
-当前交付：阶段 0 基线与原型、阶段 1 工程骨架。阶段 1 真实 PostgreSQL 迁移与回滚验收受阻，尚未部署。
+当前交付：阶段 0 基线与原型、阶段 1 工程骨架、阶段 2 本地身份系统。T-02/T-08 已确认；注册、验证、登录、重置、MFA、资料、权限及账号注销已接入，真实 PostgreSQL 集成测试通过。正式邮件及未来业务模块注销联动尚待接入，未部署。
 
-阶段 1 使用 Node.js 24 与 PostgreSQL 驱动 `pg`，运行服务仅提供基础健康接口：
+- [阶段 2 当前功能、启动方式与验收边界](docs/phase-2/identity.md)
+
+- [阶段 2 范围、模块契约与后续接入](docs/phase-2/development.md)
+- [阶段 2 验证与阻塞记录](docs/phase-2/verification.md)
+
+使用 Node.js 24 与 PostgreSQL 驱动 `pg`。无依赖配置可启动健康接口和账号页面，身份 API 返回未配置；完整本地身份演示按阶段 2 手册启动：
 
 ```powershell
 npm ci --ignore-scripts
