@@ -1,0 +1,16 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>作品工作台</title><link rel="stylesheet" href="/games/style.css"><script type="module" src="/games/ui.mjs"></script>
+<header><a href="/account">账号中心</a><h1>作品工作台</h1><p>上传作品、查看安全检查和技术审核进度。</p></header><main>
+<p id="notice" role="status" aria-live="polite">正在读取作品…</p>
+<section><h2>新建作品</h2><form id="create"><label>作品名称<input name="title" required maxlength="200"></label><button>创建作品</button></form></section>
+<section><h2>我的作品 / 管理审核</h2><button id="refresh">刷新</button><div id="works"></div></section>
+<section id="editor" hidden><h2 id="work-title"></h2><a id="public-link">查看公开试玩</a>
+<form id="upload"><label>游戏 ZIP<input name="file" type="file" accept=".zip" required></label><p>根目录须包含 index.html。默认限额：100 MB / 解压 300 MB / 500 个条目。待审核或审核中须先撤回。</p>
+<label>屏幕方向<select name="orientation"><option value="landscape">横屏</option><option value="portrait">竖屏</option></select></label>
+<label>存档版本<input name="saveVersion" value="v1" pattern="[a-zA-Z0-9_-]{1,40}" required></label>
+<label>网络白名单申请（每行一个 HTTPS 来源；作品首次通过后可申请）<textarea name="domains"></textarea></label>
+<label class="check"><input type="checkbox" name="licensed" required>我确认拥有上传资源的使用与展示授权</label><button>上传并扫描</button><progress id="progress" max="100" value="0" hidden></progress></form>
+<div id="versions"></div><h3>操作记录</h3><pre id="events"></pre></section>
+<dialog id="review"><form method="dialog" id="review-form"><h2>技术审核</h2><label>结论<select name="status"><option value="approved">审核通过</option><option value="changes">需要修改</option><option value="rejected">审核不通过</option></select></label><label>分类<select name="category"><option value="security">安全</option><option value="structure">结构</option><option value="content">内容</option><option value="other">其他</option></select></label><label>详细原因 / 复核说明<textarea name="reason" required maxlength="4000"></textarea></label><label class="check"><input name="findingsReviewed" type="checkbox">已检查结构、资源及全部代码疑点</label><button value="submit">提交结论</button><button type="button" id="cancel-review">取消</button></form></dialog>
+<dialog id="preview"><button id="close-preview">关闭预览</button><iframe title="隔离预览" sandbox="allow-scripts"></iframe></dialog>
+<dialog id="danger"><form id="danger-form"><h2>管理员操作确认</h2><p id="danger-title"></p><label>详细原因<textarea name="reason" required maxlength="4000"></textarea></label><label>管理员密码<input name="password" type="password" required autocomplete="current-password"></label><label>两步验证码<input name="code" inputmode="numeric" required autocomplete="one-time-code"></label><label class="check"><input name="confirmed" type="checkbox" required>确认执行</label><button>验证并执行</button><button type="button" id="cancel-danger">取消</button></form></dialog>
+</main></html>

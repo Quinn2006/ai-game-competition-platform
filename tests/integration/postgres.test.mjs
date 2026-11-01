@@ -7,6 +7,7 @@ import { migrate, databaseReady } from '../../src/platform/migrations.mjs';
 import { appendAudit } from '../../src/modules/audit/repository.mjs';
 import { appendSecurityAudit } from '../../src/modules/audit/security.mjs';
 import { identityCases } from './identity-cases.mjs';
+import { uploadCases } from './upload-cases.mjs';
 
 test('PostgreSQL: concurrent migration, empty rollback, reapply, audit persistence, nonempty rollback refusal', async () => {
   const config = loadConfig();
@@ -22,6 +23,8 @@ test('PostgreSQL: concurrent migration, empty rollback, reapply, audit persisten
     // Identity cases are run after rollback checks because they intentionally retain audit data.
     assert.equal(await databaseReady(database, 'development'), false);
     await assert.rejects(migrate(database, 'development', 'up'), /environment mismatch/);
+    await migrate(database, 'test', 'down'); // phase 4 empty tables
+    await migrate(database, 'test', 'down'); // phase 3, empty upload tables
     await migrate(database, 'test', 'down');
     await migrate(database, 'test', 'down');
     assert.equal(await databaseReady(database, 'test'), false);
@@ -35,6 +38,8 @@ test('PostgreSQL: concurrent migration, empty rollback, reapply, audit persisten
     assert.equal(result.rows[0].request_id, event.requestId);
     assert.equal(result.rows[0].retention_class, 'general_error_30d');
     assert.ok(result.rows[0].expires_at > result.rows[0].occurred_at);
+    await migrate(database, 'test', 'down'); // phase 4 empty tables
+    await migrate(database, 'test', 'down'); // phase 3
     await migrate(database, 'test', 'down');
     await migrate(database, 'test', 'down');
     await migrate(database, 'test', 'down');
@@ -46,15 +51,22 @@ test('PostgreSQL: concurrent migration, empty rollback, reapply, audit persisten
     assert.equal(security.retention_class, 'security_6m');
     assert.equal(security.correct_expiry, true);
     await assert.rejects(database.query("INSERT INTO platform.security_events (id, action, request_id, outcome) VALUES ($1, 'access.granted', $2, 'failure')", [randomUUID(), randomUUID()]));
+    await migrate(database, 'test', 'down'); // phase 4 empty tables
+    await migrate(database, 'test', 'down'); // phase 3
     await migrate(database, 'test', 'down');
     await migrate(database, 'test', 'down');
     await assert.rejects(migrate(database, 'test', 'down'), /security audit history is not empty/);
     await migrate(database, 'test', 'up');
     assert.equal(await databaseReady(database, 'test'), true);
     await identityCases(database);
+    await migrate(database, 'test', 'down'); // phase 4 empty tables
+    await migrate(database, 'test', 'down'); // phase 3 remains empty
     await migrate(database, 'test', 'down');
     await assert.rejects(migrate(database, 'test', 'down'), /identity data is not empty/);
     await migrate(database, 'test', 'up');
+    await uploadCases(database);
+    await migrate(database, 'test', 'down'); // empty discovery
+    await assert.rejects(migrate(database, 'test', 'down'), /Upload history is not empty/);
     await database.query("UPDATE public.schema_migrations SET checksum = 'tampered' WHERE id = '001_foundation'");
     await assert.rejects(migrate(database, 'test', 'up'), /history mismatch/);
     await assert.rejects(databaseReady(database, 'test'), /history mismatch/);

@@ -47,9 +47,17 @@ export function loadConfig(env = process.env) {
   }
   const sessionSecret = env.SESSION_SECRET || null;
   const localMailPreview = env.LOCAL_MAIL_PREVIEW === '1';
+  const localGames = env.LOCAL_GAMES === '1';
+  if(localGames && (environment !== 'development' || !['127.0.0.2','127.0.0.3'].includes(gameHost) || !new URL(gameOrigin).port)) fail('LOCAL_GAMES');
+  const positive = (key,fallback) => { const value=Number(env[key]||fallback);if(!Number.isSafeInteger(value)||value<1)fail(key);return value; };
+  const uploadLimits=Object.freeze({compressed:positive('UPLOAD_MAX_BYTES',100000000),expanded:positive('UPLOAD_MAX_EXPANDED_BYTES',300000000),files:positive('UPLOAD_MAX_FILES',500)});
+  const scannerPort=positive('CLAMD_PORT',3310);if(scannerPort>65535)fail('CLAMD_PORT');
+  const gameLoadTimeout=positive('GAME_LOAD_TIMEOUT_MS',30000);
+  const submissionDeadline=env.SUBMISSION_DEADLINE?Date.parse(env.SUBMISSION_DEADLINE):null;
+  if(submissionDeadline!==null&&(!Number.isFinite(submissionDeadline)||!/(Z|[+-]\d{2}:\d{2})$/.test(env.SUBMISSION_DEADLINE)))fail('SUBMISSION_DEADLINE');
   if (localMailPreview && environment !== 'development') fail('LOCAL_MAIL_PREVIEW');
   if (sessionSecret && Buffer.byteLength(sessionSecret) < 32) fail('SESSION_SECRET');
   if (production && (!databaseUrl || !endpoint || !sessionSecret || !env.MAIN_ORIGIN || !env.GAME_ORIGIN)) fail('production dependencies');
   return Object.freeze({ environment, port, host, mainOrigin, gameOrigin,
-    databaseUrl, databaseTls, storage: Object.freeze({ endpoint, bucket }), sessionSecret, localMailPreview });
+    databaseUrl, databaseTls, storage: Object.freeze({ endpoint, bucket }), sessionSecret, localMailPreview,localGames,uploadLimits,scannerPort,gameLoadTimeout,submissionDeadline });
 }

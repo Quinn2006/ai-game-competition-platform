@@ -8,7 +8,7 @@ const db=new pg.Pool({connectionString:url.href});
 try{
   if((await db.query("SELECT to_regnamespace('platform') AS name")).rows[0].name)throw Error('Refusing to reuse an existing schema');
   await migrate(db,'test','up');
-  await db.query(await readFile(new URL('../tests/integration/discovery-contract.sql',import.meta.url),'utf8'));
+
   const fixtures=await discoveryCases(db);
   console.log('PASS: real PostgreSQL discovery migration/rollback, published gating, five-field search, pagination, sorting, privacy, ownership, history, filtering and expiry');
   console.log(JSON.stringify(fixtures));

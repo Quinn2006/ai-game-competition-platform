@@ -6,7 +6,7 @@ import {createDiscoveryService,deletionParticipant} from '../../src/modules/disc
 export async function discoveryCases(db){
   const migration=await readFile(new URL('../../migrations/006_discovery.up.sql',import.meta.url),'utf8');
   const down=await readFile(new URL('../../migrations/006_discovery.down.sql',import.meta.url),'utf8');
-  await db.query(migration);await db.query(down);await db.query(migration);
+  await db.query(down);await db.query(migration);
   const owner=randomUUID(),other=randomUUID(),team=randomUUID(),ids=[];
   for(const id of [owner,other])await db.query("INSERT INTO platform.accounts(id,status,nickname,email,bio) VALUES($1,'active',$2,$3,'公开简介')",[id,id===owner?'星河作者':'其他作者',id+'@example.test']);
   await db.query('INSERT INTO platform.discovery_teams(id,name,bio,members) VALUES($1,$2,$3,$4)',[team,'像素团队','公开团队简介',JSON.stringify([{nickname:'成员',email:'DO_NOT_LEAK'}])]);
@@ -15,7 +15,7 @@ export async function discoveryCases(db){
   for(let i=0;i<15;i++){
     const id=randomUUID(),version=randomUUID();ids.push(id);
     await db.query('INSERT INTO platform.works(id,owner_id,title) VALUES($1,$2,$3)',[id,owner,'作品'+i]);
-    await db.query("INSERT INTO platform.game_versions(id,work_id,status,scan_status,created_at) VALUES($1,$2,$3,'clean',CURRENT_TIMESTAMP-($4::integer*interval '1 minute'))",[version,id,i===14?'pending':'approved',i]);
+    await db.query("INSERT INTO platform.game_versions(id,work_id,status,scan_status,digest,metadata,findings,created_at) VALUES($1,$2,$3,'clean','fixture','{}','[]',CURRENT_TIMESTAMP-($4::integer*interval '1 minute'))",[version,id,i===14?'pending':'approved',i]);
     await db.query('UPDATE platform.works SET published_version=$2 WHERE id=$1',[id,version]);
     await service.edit({workId:id,title:'作品'+i,summary:i===0?'全文'.repeat(3000):'说明 '+i,instructions:'方向键移动',category:i%2?'动作':'益智',tags:['光影标签']},{});
     await db.query('INSERT INTO platform.discovery_metrics(work_id,likes,plays,popularity) VALUES($1,$2,$3,$4)',[id,i,30-i,i/2]);

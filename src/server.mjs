@@ -4,17 +4,30 @@ import { createDatabase } from './platform/database.mjs';
 import { createPrivateStorage } from './platform/storage.mjs';
 import { createApp } from './app.mjs';
 import { createIdentityService } from './modules/identity/service.mjs';
-import { createDiscoveryService, deletionParticipant } from './modules/discovery/service.mjs';
+import { createDiscoveryService, deletionParticipant as discoveryDeletion } from './modules/discovery/service.mjs';
+import { createLocalStorage } from './platform/local-storage.mjs';
+import { createScanner } from './modules/uploads/scanner.mjs';
+import { createUploadService, deletionParticipant } from './modules/uploads/service.mjs';
+import { createGameHttp } from './modules/uploads/http.mjs';
+
 
 const log = createLogger();
 try {
   const config = loadConfig();
   const database = createDatabase(config, log);
   const mailbox = config.localMailPreview ? [] : undefined;
-  const identity = database && config.sessionSecret && mailbox ? createIdentityService({ database, secret: config.sessionSecret, deletionParticipants:[deletionParticipant],
+  const identity = database && config.sessionSecret && mailbox ? createIdentityService({ database, secret: config.sessionSecret, deletionParticipants:[deletionParticipant,discoveryDeletion],
     mail: async message => { mailbox.push(message); if (mailbox.length > 50) mailbox.shift(); } }) : undefined;
+  const storage = config.localGames ? createLocalStorage('tmp/private-games',config.environment) : createPrivateStorage(config);
+  const uploads = config.localGames && identity ? createUploadService({database,identity,storage,scan:createScanner({port:config.scannerPort}),limits:config.uploadLimits,deadline:config.submissionDeadline}) : null;
+  const games = createGameHttp({config,uploads,storage,limits:config.uploadLimits,loadTimeout:config.gameLoadTimeout});
   const discovery = database ? createDiscoveryService({ database, identity }) : null;
-  const app = createApp({ config, database, storage: createPrivateStorage(config), log, identity, mailbox, discovery });
+  const app = createApp({ config, database, storage, log, identity, mailbox, games:games.main, discovery });
+  if(config.localGames) {
+    games.game.on('error',()=>{log('app.failed',{code:'GAME_SERVER_ERROR'});app.close();process.exitCode=1;});
+    const origin=new URL(config.gameOrigin);games.game.listen(Number(origin.port),origin.hostname);
+  }
+
   let cleaning = false;
   const cleanup = identity ? setInterval(async () => {
     if (cleaning) return;
@@ -34,6 +47,7 @@ try {
     if (stopping) return;
     stopping = true;
     clearInterval(cleanup);
+    games.game.close();games.game.closeAllConnections();
     const timeout = setTimeout(() => process.exit(1), 10000);
     timeout.unref();
     app.close(async () => {

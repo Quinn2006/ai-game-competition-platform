@@ -1,6 +1,6 @@
 import {readHistory,saveHistory} from '/catalog/history.mjs';
 const $=s=>document.querySelector(s),cats=['动作','射击','益智','冒险','体育','休闲','模拟经营','其他'];
-const params=new URLSearchParams(location.search);let next=null,busy=false,user=null,serial=0;
+const params=new URLSearchParams(location.search);let next=null,busy=false,user=null,serial=0,savedCover='';
 function node(tag,text,cls){const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e;}
 function link(text,url){const e=node('a',text);e.href=url;return e;}
 function message(text,error=false){$('#status').textContent=text;$('#status').className=error?'error':'';}
@@ -31,7 +31,7 @@ $('#category').onchange=()=>load();$('#sort').onchange=()=>load();$('#more').onc
 $('#clear').onclick=async()=>{try{if(user)await api('clear',{},true);else localStorage.removeItem('game-search');await history();message('搜索历史已清空');}catch(e){message(e.message,true);}};
 async function submit(form,action,convert){form.onsubmit=async e=>{e.preventDefault();const b=form.querySelector('button');b.disabled=true;try{await api(action,await convert(Object.fromEntries(new FormData(form))),true);message('保存成功');}catch(err){message(err.message,true);}finally{b.disabled=false;}};}
 const coverLabel=node('label','自定义封面（PNG/JPEG/WebP，最大 500 KB，可选）'),coverInput=node('input');coverInput.type='file';coverInput.accept='image/png,image/jpeg,image/webp';coverInput.name='coverFile';coverLabel.append(coverInput);$('#edit-form').insertBefore(coverLabel,$('#edit-form button'));
-submit($('#edit-form'),'edit',async v=>{let cover='';if(v.coverFile?.size){if(v.coverFile.size>500000)throw Error('封面不能超过 500 KB');cover=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(Error('无法读取封面'));r.readAsDataURL(v.coverFile);});}const {coverFile,...rest}=v;return {...rest,cover,tags:v.tags.split(/[,，]/).map(t=>t.trim()).filter(Boolean)};});
+submit($('#edit-form'),'edit',async v=>{let cover=savedCover;if(v.coverFile?.size){if(v.coverFile.size>500000)throw Error('封面不能超过 500 KB');cover=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(Error('无法读取封面'));r.readAsDataURL(v.coverFile);});}const {coverFile,...rest}=v;return {...rest,cover,tags:v.tags.split(/[,，]/).map(t=>t.trim()).filter(Boolean)};});
 submit($('#settings-form'),'admin',v=>({...v,action:'settings',batchSize:Number(v.batchSize),blockedTerms:v.blockedTerms.split('\n').map(t=>t.trim()).filter(Boolean)}));
 submit($('#feature-form'),'admin',v=>({...v,action:'feature',featured:v.featured==='true'}));
 async function init(){
@@ -42,13 +42,16 @@ async function init(){
   if(path==='/catalog/edit'||path==='/catalog/admin'){
     $('#title').textContent=path.endsWith('edit')?'完善作品资料':'发现页管理';$('#intro').textContent='';
     if(!user||(path.endsWith('admin')&&!user.roles.includes('admin'))){message('请使用有权限的账号登录后操作',true);return;}
-    $(path.endsWith('edit')?'#editor':'#admin').hidden=false;$('#edit-form').elements.workId.value=params.get('id')??'';return;
+    $(path.endsWith('edit')?'#editor':'#admin').hidden=false;$('#edit-form').elements.workId.value=params.get('id')??'';
+    if(path.endsWith('edit')&&params.get('id')){try{const draft=await api('draft',{id:params.get('id')});for(const key of ['title','summary','instructions','category'])$('#edit-form').elements[key].value=draft[key];$('#edit-form').elements.tags.value=draft.tags.join(',');savedCover=draft.cover;}catch{message('请填写资料；已有资料无法读取时，请刷新重试。',true);}}
+    if(path.endsWith('admin')){const settings=await api('settings');$('#settings-form').elements.batchSize.value=settings.batch_size;$('#settings-form').elements.blockedTerms.value=settings.blocked_terms.join('\n');}
+    return;
   }
   if(path==='/work'){
     const work=await api('detail',{id:params.get('id')});$('#title').textContent=work.title;document.title=work.title+' · 小游戏实验场';$('#intro').textContent=work.category;
     const panel=$('#detail');panel.hidden=false;panel.append(cover(work),author(work),node('h2','游戏简介'),node('p',work.summary),node('h2','操作说明'),node('p',work.instructions));
     const capabilities=await api('capabilities');
-    if(capabilities.play)panel.append(link('开始试玩','/play?work='+encodeURIComponent(work.id)));
+    if(capabilities.play){const frame=node('iframe');frame.title=work.title+'试玩';frame.src='/play?work='+encodeURIComponent(work.id);frame.allow='autoplay; fullscreen';panel.prepend(frame);}
     else panel.append(node('p','试玩服务暂未开放。','muted'));
     return;
   }

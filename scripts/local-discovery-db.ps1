@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$Runtime,[int]$Port=55644)
+param([Parameter(Mandatory=$true)][string]$Runtime,[int]$Port=55644,[switch]$Regression)
 $ErrorActionPreference='Stop'
 $project=Split-Path -Parent $PSScriptRoot
 $state=Join-Path $project ('tmp\discovery-db-'+(Get-Date -Format 'yyyyMMdd-HHmmss'))
@@ -17,5 +17,5 @@ try{& (Join-Path $Runtime 'createdb.exe') -h 127.0.0.1 -p $Port -U app_test ai_g
 @{database="postgres://app_test:${password}@127.0.0.1:${Port}/ai_games_test";state=$state} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $state 'credentials.json')
 $env:DATABASE_URL="postgres://app_test:${password}@127.0.0.1:${Port}/ai_games_test"
 $env:CONFIRM_DISPOSABLE_DATABASE='ai_games_test'
-try{node (Join-Path $PSScriptRoot 'check-discovery-db.mjs');if($LASTEXITCODE -ne 0){throw 'Discovery database checks failed'}}finally{Remove-Item Env:\DATABASE_URL;Remove-Item Env:\CONFIRM_DISPOSABLE_DATABASE}
+try{if($Regression){$env:APP_ENV='test';node --test (Join-Path $project 'tests\integration\postgres.test.mjs')}else{node (Join-Path $PSScriptRoot 'check-discovery-db.mjs')};if($LASTEXITCODE -ne 0){throw 'Discovery database checks failed'}}finally{Remove-Item Env:\DATABASE_URL;Remove-Item Env:\CONFIRM_DISPOSABLE_DATABASE}
 Write-Output ('Test state: '+$state)
