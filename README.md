@@ -1,6 +1,19 @@
 # AI 小游戏比赛平台
 
-当前交付：阶段 0 需求基线与高风险原型。尚未建设正式平台或部署。
+当前交付：阶段 0 基线与原型、阶段 1 工程骨架。阶段 1 真实 PostgreSQL 迁移与回滚验收受阻，尚未部署。
+
+阶段 1 使用 Node.js 24 与 PostgreSQL 驱动 `pg`，运行服务仅提供基础健康接口：
+
+```powershell
+npm ci --ignore-scripts
+npm start
+```
+
+默认监听 `http://127.0.0.1:4320`；`/health/live` 返回 200，未连接真实数据库和私有对象存储时 `/health/ready` 返回 503。停止服务使用 Ctrl+C。
+
+- [阶段 1 启动、环境变量、迁移与人工验收说明](docs/phase-1/development.md)
+- [阶段 1 验证与阻塞记录](docs/phase-1/verification.md)
+- [阶段 1 架构与模块边界](docs/phase-1/architecture.md)
 
 - [阶段 0 验证记录](docs/phase-0/verification.md)
 - [130 条需求追踪与用例](docs/phase-0/requirements.md)
@@ -8,7 +21,7 @@
 - [数据分类与留存](docs/phase-0/data-retention.md)
 - [架构决策](docs/phase-0/architecture.md)、[威胁模型](docs/phase-0/threat-model.md)、[本机环境](docs/phase-0/environment.md)
 
-Node.js 24，无需 npm install：
+阶段 0 原型仍可单独运行；完整测试先执行上面的依赖安装：
 
 ```powershell
 npm test
