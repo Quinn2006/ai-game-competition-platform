@@ -10,18 +10,21 @@ import { createUploadService, deletionParticipant } from './modules/uploads/serv
 import { createGameHttp } from './modules/uploads/http.mjs';
 import { createDiscoveryService, deletionParticipant as discoveryDeletion } from './modules/discovery/service.mjs';
 
+import { createCommunityService, deletionParticipant as communityDeletion } from './modules/community/service.mjs';
+
 const log = createLogger();
 try {
   const config = loadConfig();
   const database = createDatabase(config, log);
   const mailbox = config.localMailPreview ? [] : undefined;
-  const identity = database && config.sessionSecret && mailbox ? createIdentityService({ database, secret: config.sessionSecret, deletionParticipants:[deletionParticipant,discoveryDeletion],
+  const identity = database && config.sessionSecret && mailbox ? createIdentityService({ database, secret: config.sessionSecret, deletionParticipants:[deletionParticipant,discoveryDeletion,communityDeletion],
     mail: async message => { mailbox.push(message); if (mailbox.length > 50) mailbox.shift(); } }) : undefined;
   const storage = config.localGames ? createLocalStorage('tmp/private-games',config.environment) : createPrivateStorage(config);
   const uploads = config.localGames && identity ? createUploadService({database,identity,storage,scan:createScanner({port:config.scannerPort}),limits:config.uploadLimits,deadline:config.submissionDeadline}) : null;
   const games = createGameHttp({config,uploads,storage,limits:config.uploadLimits,loadTimeout:config.gameLoadTimeout});
   const discovery = database ? createDiscoveryService({ database, identity }) : null;
-  const app = createApp({ config, database, storage, log, identity, mailbox, games:games.main, discovery });
+  const community = database && identity ? createCommunityService({database,identity,secret:config.sessionSecret}) : null;
+  const app = createApp({ config, database, storage, log, identity, mailbox, games:games.main, discovery, community });
   if(config.localGames) {
     games.game.on('error',()=>{log('app.failed',{code:'GAME_SERVER_ERROR'});app.close();process.exitCode=1;});
     const origin=new URL(config.gameOrigin);games.game.listen(Number(origin.port),origin.hostname);
@@ -30,7 +33,7 @@ try {
   const cleanup = identity ? setInterval(async () => {
     if (cleaning) return;
     cleaning = true;
-    try { await identity.cleanup(); await discovery?.cleanup(); } catch { log('identity.cleanup_failed', { code: 'CLEANUP_FAILED' }); }
+    try { await identity.cleanup(); await discovery?.cleanup(); await community?.cleanup(); } catch { log('identity.cleanup_failed', { code: 'CLEANUP_FAILED' }); }
     finally { cleaning = false; }
   }, 60000) : null;
   cleanup?.unref();

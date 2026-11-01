@@ -1,0 +1,28 @@
+import {createGameHttp} from '../src/modules/uploads/http.mjs';
+import {zipFixture} from './zip-fixture.mjs';
+import {createHash} from 'node:crypto';
+// Explicit synthetic browser fixture; never imported by the application entry.
+import pg from 'pg';
+import {createApp} from '../src/app.mjs';
+import {createCommunityService} from '../src/modules/community/service.mjs';
+import {createDiscoveryService} from '../src/modules/discovery/service.mjs';
+import {createIdentityService} from '../src/modules/identity/service.mjs';
+import {newToken,digest} from '../src/modules/identity/crypto.mjs';
+import {randomUUID} from 'node:crypto';
+const url=new URL(process.env.DATABASE_URL);if(url.hostname!=='127.0.0.1'||url.pathname!=='/ai_games_test')throw Error('Test DB only');
+const database=new pg.Pool({connectionString:url.href}),id=randomUUID(),token=newToken();
+await database.query("INSERT INTO platform.accounts(id,status,nickname) VALUES($1,'active','浏览器测试玩家')",[id]);
+await database.query("INSERT INTO platform.sessions(token_hash,account_id,expires_at) VALUES($1,$2,CURRENT_TIMESTAMP+interval '1 hour')",[digest(token),id]);
+const config={mainOrigin:'http://127.0.0.1:4337',gameOrigin:'http://127.0.0.2:4338',localGames:true,environment:'test',sessionSecret:'synthetic-browser-community-secret'};
+const identity=createIdentityService({database,secret:config.sessionSecret,mail:async()=>{}}),community=createCommunityService({database,identity,secret:config.sessionSecret});
+const workId=randomUUID(),versionId=randomUUID();
+const bytes=zipFixture([['index.html',`<!doctype html><html><body style="background:#d4edda;padding:20px"><button style="padding:30px" onclick="this.textContent='已交互'">点击试玩</button><button onclick="throw Error('synthetic crash')">模拟错误</button></body></html>`]]);
+const metadata={domains:[],saveVersion:'v1',orientation:'landscape'},digestValue=createHash('sha256').update(bytes).digest('hex');
+await database.query("INSERT INTO platform.works(id,owner_id,title) VALUES($1,$2,'端到端试玩')",[workId,id]);
+await database.query("INSERT INTO platform.game_versions(id,work_id,status,digest,metadata,findings,scan_status) VALUES($1,$2,'approved',$3,$4,'[]','clean')",[versionId,workId,digestValue,metadata]);
+await database.query('UPDATE platform.works SET published_version=$2 WHERE id=$1',[workId,versionId]);
+await database.query("INSERT INTO platform.work_profiles(work_id,title,summary,instructions,category) VALUES($1,'端到端试玩','合成游戏','点击后退出','益智')",[workId]);
+const games=createGameHttp({config,uploads:{published:async()=>({id:versionId,work_id:workId,title:'端到端试玩',digest:digestValue,metadata})},storage:{get:async()=>bytes}});
+games.game.listen(4338,'127.0.0.2');console.log('Play fixture: /play?work='+workId);
+const app=createApp({config,database,log:()=>{},identity,games:games.main,discovery:createDiscoveryService({database,identity}),community:{run:(a,i,c)=>community.run(a,i,{...c,sessionToken:token})}});
+app.listen(4337,'127.0.0.1',()=>console.log('Synthetic community fixture ready on 4337'));

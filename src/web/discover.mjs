@@ -1,3 +1,4 @@
+import {mountCommunity} from '/community/ui.mjs';
 import {readHistory,saveHistory} from '/catalog/history.mjs';
 const $=s=>document.querySelector(s),cats=['动作','射击','益智','冒险','体育','休闲','模拟经营','其他'];
 const params=new URLSearchParams(location.search);let next=null,busy=false,user=null,serial=0;
@@ -48,8 +49,9 @@ async function init(){
     const work=await api('detail',{id:params.get('id')});$('#title').textContent=work.title;document.title=work.title+' · 小游戏实验场';$('#intro').textContent=work.category;
     const panel=$('#detail');panel.hidden=false;panel.append(cover(work),author(work),node('h2','游戏简介'),node('p',work.summary),node('h2','操作说明'),node('p',work.instructions));
     const capabilities=await api('capabilities');
-    if(capabilities.play)panel.append(link('开始试玩','/play?work='+encodeURIComponent(work.id)));
+    if(capabilities.play){const frame=node('iframe');frame.title='试玩 '+work.title;frame.src='/play?embed=1&work='+encodeURIComponent(work.id);frame.width='100%';frame.height='650';frame.allow='autoplay; fullscreen';panel.append(frame,link('打开独立试玩页','/play?work='+encodeURIComponent(work.id)));}
     else panel.append(node('p','试玩服务暂未开放。','muted'));
+    const community=document.createElement('section');panel.append(community);await mountCommunity(community,work.id);
     return;
   }
   if(path==='/author'||path==='/team'){

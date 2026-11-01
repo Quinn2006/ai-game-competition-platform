@@ -26,7 +26,7 @@ test('discovery: parameterized five-field search, publication gates and stable p
   const calls=[],database={async query(sql,args){calls.push({sql,args});return {rows:sql.includes('discovery_settings')?[{batch_size:12}]:[]};}};
   const s=createDiscoveryService({database});await s.list({q:"%_' OR 1=1",category:'益智'});
   const c=calls.at(-1);assert.equal(c.sql.includes("OR 1=1"),false);assert.equal((c.sql.match(/ILIKE/g)||[]).length,5);assert.match(c.sql,/v.id=w.published_version AND v.work_id=w.id/);assert.match(c.sql,/NOT v.revoked/);assert.match(c.sql,/NOT v.withdrawn/);assert.match(c.sql,/scan_status='clean'/);assert.equal(c.args[0],"%\\%\\_' or 1=1%");assert.deepEqual(c.args.slice(-2),[13,0]);
-  await assert.rejects(s.list({sort:'duration'}),{code:'METRIC_PENDING'});await assert.rejects(s.list({sort:'__proto__'}));await assert.rejects(s.list({offset:-1}));
+  await s.list({sort:'duration'});assert.match(calls.at(-1).sql,/NULLIF\(m.plays,0\)/);await assert.rejects(s.list({sort:'__proto__'}));await assert.rejects(s.list({offset:-1}));
 });
 test('discovery HTTP: pages, methods, origin/host checks, session scope and search flood limit',async t=>{
   const config={mainOrigin:'http://127.0.0.1',environment:'test'},seen=[];

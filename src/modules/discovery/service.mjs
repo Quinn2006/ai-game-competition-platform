@@ -1,7 +1,7 @@
 import { AppError } from '../../platform/errors.mjs';
 
 export const categories = ['动作','射击','益智','冒险','体育','休闲','模拟经营','其他'];
-export const sorts = { latest:'v.created_at DESC', likes:'m.likes DESC NULLS LAST', plays:'m.plays DESC NULLS LAST', popularity:'m.popularity DESC NULLS LAST' };
+export const sorts = { duration:'(m.duration_ms::numeric / NULLIF(m.plays,0)) DESC NULLS LAST', latest:'v.created_at DESC', likes:'m.likes DESC NULLS LAST', plays:'m.plays DESC NULLS LAST', popularity:'m.popularity DESC NULLS LAST' };
 const fail = (code,status=400,message='请求无效') => { throw new AppError(code,status,message); };
 const uuid = value => typeof value==='string' && /^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(value);
 export function termOf(value='') {
@@ -48,7 +48,6 @@ export function createDiscoveryService({database,identity}) {
   async function list(input={}) {
     const q=termOf(input.q),category=input.category??'',sort=input.sort??'latest',offset=Number(input.offset??0);
     if(category && !categories.includes(category)) fail('INVALID_CATEGORY');
-    if(sort==='duration') fail('METRIC_PENDING',409,'平均有效时长将在试玩统计接入后开放');
     if(!Object.hasOwn(sorts,sort)||!Number.isSafeInteger(offset)||offset<0||offset>100000) fail('INVALID_QUERY');
     const {batch_size:limit}=await settings();
     const args=[],where=[visible];

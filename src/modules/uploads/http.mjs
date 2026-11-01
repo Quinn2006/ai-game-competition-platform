@@ -33,7 +33,7 @@ export function createGameHttp({ config, uploads, storage, limits=defaultLimits,
     if(asset) {
       if(!['GET','HEAD'].includes(req.method)) fail('METHOD_NOT_ALLOWED',405);
       res.setHeader('Content-Type',asset[1]+'; charset=utf-8');
-      res.setHeader('Content-Security-Policy',`default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; frame-src ${config.gameOrigin}; base-uri 'none'; frame-ancestors 'none'`);
+      res.setHeader('Content-Security-Policy',`default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; frame-src ${config.gameOrigin}; base-uri 'none'; frame-ancestors ${path==='/play'&&url.searchParams.get('embed')==='1'?"'self'":"'none'"}`);
       return {route:path,data:req.method==='HEAD'?'':await readFile(new URL('../../web/'+asset[0],import.meta.url))};
     }
     if(!uploads) fail('UPLOADS_UNAVAILABLE',503);

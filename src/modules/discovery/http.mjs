@@ -41,7 +41,7 @@ export function createDiscoveryHttp({config,discovery,clock=()=>Date.now()}) {
       try{input=JSON.parse(Buffer.concat(parts).toString());if(!input||typeof input!=='object'||Array.isArray(input))throw Error();}catch{fail('INVALID_JSON',400,'内容无效');}
     }
     let result;
-    if(action==='capabilities')result={duration:false,rankings:false,play:config.localGames===true};
+    if(action==='capabilities')result={duration:true,rankings:false,play:config.localGames===true};
     else if(action==='detail')result=await discovery.detail(input.id);
     else if(action==='profile')result=await discovery.profile(input.kind,input.id);
     else if(action==='history'||action==='clear')result=await discovery[action](context);
