@@ -1,6 +1,22 @@
 # 阶段 3：上传、审核与隔离试玩
 
-2026-11-01：本地实现已交付；真实扫描、生产存储与隔离验收受阻。没有部署、推送或公开发布。分支 `codex/phase-3-upload-isolation`。
+2026-11-01 后续：真实扫描器已接通，本地扫描/审核闭环及补充浏览器脚本通过；生产存储/域名、真实设备兼容性及最终人工签收仍待完成。没有部署、推送或公开发布。分支 `codex/phase-3-upload-isolation`。
+
+## 真实扫描器启动与复验
+
+本机已下载并校验 [ClamAV 官方 1.5.4 Windows x64 便携包](https://github.com/Cisco-Talos/clamav/releases/tag/clamav-1.5.4)，位于 `tmp/phase3-clamav/runtime/clamav-1.5.4.win.x64`；未安装系统服务、未修改系统防病毒设置。官方发行资产 SHA-256 为 `0d9e0228b2674137ea1a2853566c98a0278ad52ab2582c3d6dbd75373848c395`。引擎与病毒库不入库、不随项目再分发。
+
+先启动扫描器，再按下文启动账号/投稿服务：
+
+```powershell
+.\scripts\local-scanner.ps1 -Update -Start
+```
+
+只启动已更新的本机病毒库可用 `-Start`。脚本每次写入新的配置目录，监听 `127.0.0.1:3310`，通过 PING/PONG 后才报告就绪。扫描设置：StreamMaxLength/MaxFileSize 300000000、MaxScanSize 400000000、MaxFiles 1000、MaxRecursion 20、AlertExceedsMax yes；超过扫描上限不会按 clean 放行。平台上传限额仍为 100000000/300000000/500。更改平台限额后需同步调整扫描器并重新验收。
+
+`npm run test:scanner` 必须指定独立测试数据库的 `APP_ENV=test`、`DATABASE_URL` 和 `CONFIRM_DISPOSABLE_DATABASE=ai_games_test`；连接失败直接失败，不跳过、不使用替身。测试在该库新增合成账号及作品，保留证据。测试 EICAR 为内存中的标准无害杀毒测试串，不创建可执行病毒文件。
+
+浏览器复验：一个终端运行 `node tests\browser-games-server.mjs`，另一个运行 `.\scripts\browser-phase3-check.ps1`。夹具仅用于回环测试、含场景控制接口，不能作为正式启动入口。正式服务没有场景切换或扫描跳过开关。
 
 ## 本轮确认
 
@@ -36,7 +52,7 @@ Node.js 24；依赖安装 `npm ci --ignore-scripts`。复用阶段 2 的本地 P
 
 `LOCAL_GAMES=1` 仅允许开发环境和指定回环游戏来源，不能用本地驱动启动生产游戏服务。可配置 `UPLOAD_MAX_BYTES`、`UPLOAD_MAX_EXPANDED_BYTES`、`UPLOAD_MAX_FILES`、`GAME_LOAD_TIMEOUT_MS`（默认 30000）、`CLAMD_PORT`（默认 3310）。可选 `SUBMISSION_DEADLINE` 必须包含 `Z` 或明确时区；未配置时普通作品无提交截止，赛事时间由阶段 6 接入。
 
-ClamAV 必须由运行者实际提供，回环监听、病毒库更新、StreamMaxLength/MaxScanSize/MaxFileSize 必须与平台限额协调；当前未自动下载或安装。服务缺失时上传记录为扫描异常，只能撤回后重提，不能通过或公开。集成测试中的扫描替身仅由测试代码注入，正式入口没有“跳过扫描”开关。
+本机 ClamAV 现可按上文启动；其他环境仍须配置真实扫描器、更新病毒库并协调限额。服务缺失时上传记录为扫描异常，只能撤回后重提，不能通过或公开。常规集成测试保留扫描替身用于异常分支；新增真实扫描验收无替身，正式入口没有“跳过扫描”开关。
 
 ## 游戏作者接入
 
