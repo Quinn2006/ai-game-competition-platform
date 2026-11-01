@@ -2,8 +2,10 @@ import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { AppError, publicError } from './platform/errors.mjs';
 import { databaseReady } from './platform/migrations.mjs';
+import { createIdentityHttp } from './modules/identity/http.mjs';
 
-export function createApp({ config, database, storage, log }) {
+export function createApp({ config, database, storage, log, identity, mailbox }) {
+  const identityHttp = createIdentityHttp({ config, identity, mailbox });
   return createServer({ requestTimeout: 10000, headersTimeout: 5000, maxHeaderSize: 16384 }, async (req, res) => {
     const requestId = randomUUID();
     const start = performance.now();
@@ -17,6 +19,14 @@ export function createApp({ config, database, storage, log }) {
     res.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'");
     try {
       const path = req.url?.split('?')[0];
+      const response = await identityHttp(req, res, requestId);
+      if (response) {
+        route = response.route;
+        status = 200;
+        res.writeHead(status);
+        res.end(response.data);
+        return;
+      }
       if (!['/health/live', '/health/ready'].includes(path)) throw new AppError('NOT_FOUND', 404, '接口不存在');
       route = path;
       if (req.method !== 'GET' && req.method !== 'HEAD') {

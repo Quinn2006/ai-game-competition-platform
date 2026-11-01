@@ -3,12 +3,24 @@ import { createLogger } from './platform/logger.mjs';
 import { createDatabase } from './platform/database.mjs';
 import { createPrivateStorage } from './platform/storage.mjs';
 import { createApp } from './app.mjs';
+import { createIdentityService } from './modules/identity/service.mjs';
 
 const log = createLogger();
 try {
   const config = loadConfig();
   const database = createDatabase(config, log);
-  const app = createApp({ config, database, storage: createPrivateStorage(config), log });
+  const mailbox = config.localMailPreview ? [] : undefined;
+  const identity = database && config.sessionSecret && mailbox ? createIdentityService({ database, secret: config.sessionSecret,
+    mail: async message => { mailbox.push(message); if (mailbox.length > 50) mailbox.shift(); } }) : undefined;
+  const app = createApp({ config, database, storage: createPrivateStorage(config), log, identity, mailbox });
+  let cleaning = false;
+  const cleanup = identity ? setInterval(async () => {
+    if (cleaning) return;
+    cleaning = true;
+    try { await identity.cleanup(); } catch { log('identity.cleanup_failed', { code: 'CLEANUP_FAILED' }); }
+    finally { cleaning = false; }
+  }, 60000) : null;
+  cleanup?.unref();
   app.on('error', async () => {
     log('app.failed', { code: 'SERVER_ERROR' });
     await database?.end();
@@ -19,6 +31,7 @@ try {
   const stop = () => {
     if (stopping) return;
     stopping = true;
+    clearInterval(cleanup);
     const timeout = setTimeout(() => process.exit(1), 10000);
     timeout.unref();
     app.close(async () => {

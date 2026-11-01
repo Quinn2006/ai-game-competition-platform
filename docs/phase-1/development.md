@@ -1,5 +1,7 @@
 # 阶段 1 开发与验收手册
 
+2026-11-01 更新：阶段 2 已追加 003_identity、004_audit_retention；up 当前应用四条迁移，down 每次仅回退最新一条且拒绝对应非空数据。已在便携 PostgreSQL 18.6 上实测。当前身份服务启动以 docs/phase-2/identity.md 为准，下文保留阶段 1 环境说明。
+
 前提：Node.js 24、npm，工作目录 `D:\AI-project\Codex-project1`。没有 PostgreSQL 也能启动骨架；业务功能与完整就绪尚不可用。
 
 ## 启动及本地检查
