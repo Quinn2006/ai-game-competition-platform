@@ -1,7 +1,7 @@
 import { AppError } from '../../platform/errors.mjs';
 
 export const categories = ['动作','射击','益智','冒险','体育','休闲','模拟经营','其他'];
-export const sorts = { duration:'(m.duration_ms::numeric / NULLIF(m.plays,0)) DESC NULLS LAST', latest:'v.created_at DESC', likes:'m.likes DESC NULLS LAST', plays:'m.plays DESC NULLS LAST', popularity:'m.popularity DESC NULLS LAST' };
+export const sorts = { duration:'(m.duration_ms::numeric / NULLIF(m.plays,0)) DESC NULLS LAST', latest:'COALESCE(pub.published_at,v.created_at) DESC', likes:'m.likes DESC NULLS LAST', plays:'m.plays DESC NULLS LAST', popularity:'m.popularity DESC NULLS LAST' };
 const fail = (code,status=400,message='请求无效') => { throw new AppError(code,status,message); };
 const uuid = value => typeof value==='string' && /^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(value);
 export function termOf(value='') {
@@ -23,11 +23,12 @@ export function profileOf(input) {
 }
 const from = `FROM platform.works w JOIN platform.game_versions v ON v.id=w.published_version AND v.work_id=w.id
   JOIN platform.work_profiles p ON p.work_id=w.id JOIN platform.accounts a ON a.id=w.owner_id
+  LEFT JOIN LATERAL (SELECT max(occurred_at) AS published_at FROM platform.upload_events e WHERE e.work_id=w.id AND e.version_id=v.id AND (e.action='rollback' OR (e.action='decide' AND e.detail->>'status'='approved'))) pub ON true
   LEFT JOIN platform.discovery_teams t ON t.id=p.team_id LEFT JOIN platform.discovery_metrics m ON m.work_id=w.id`;
 const visible = `v.status='approved' AND NOT v.revoked AND NOT v.withdrawn AND v.scan_status='clean' AND a.status='active'`;
 const fields = `w.id,p.title,p.summary,p.instructions,p.category,p.tags,p.cover,
   a.id AS author_id,a.nickname AS author_name,t.id AS team_id,t.name AS team_name,
-  m.likes,m.plays,m.popularity,v.created_at AS published_at`;
+  m.likes,m.plays,m.popularity,COALESCE(pub.published_at,v.created_at) AS published_at`;
 export function publicWork(r) {
   return {id:r.id,title:r.title,summary:r.summary,instructions:r.instructions,category:r.category,tags:r.tags,cover:r.cover,
     author:{id:r.author_id,nickname:r.author_name},team:r.team_id?{id:r.team_id,name:r.team_name}:null,
@@ -64,6 +65,8 @@ export function createDiscoveryService({database,identity}) {
   return {
     async ready(){return Boolean((await query("SELECT to_regclass('platform.work_profiles') AS name")).rows[0].name);},
     list,
+    async draft(input,context){const u=await user(context);if(!uuid(input.id))fail('NOT_FOUND',404);const row=(await query('SELECT p.* FROM platform.work_profiles p JOIN platform.works w ON w.id=p.work_id WHERE w.id=$1 AND w.owner_id=$2',[input.id,u.id])).rows[0];if(!row)fail('NOT_FOUND',404);return row;},
+    async settings(input,context){const u=await user(context);if(!u.roles.includes('admin'))fail('FORBIDDEN',403);return settings();},
     async detail(id){if(!uuid(id))fail('NOT_FOUND',404);const row=(await query(`SELECT ${fields} ${from} WHERE ${visible} AND w.id=$1`,[id])).rows[0];if(!row)fail('NOT_FOUND',404);return publicWork(row);},
     async profile(kind,id){
       if(!uuid(id)||!['author','team'].includes(kind))fail('NOT_FOUND',404);

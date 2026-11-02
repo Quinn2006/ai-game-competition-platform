@@ -26,7 +26,7 @@ export function createDiscoveryHttp({config,discovery,clock=()=>Date.now()}) {
     }
     if(!discovery)fail('DISCOVERY_UNAVAILABLE',503,'作品服务尚未配置');
     if(discovery.ready&&!await discovery.ready())fail('DISCOVERY_UNAVAILABLE',503,'作品服务尚未准备就绪');
-    const action=path.slice('/api/discovery/'.length),read=['list','detail','profile','hot','history','capabilities'].includes(action);
+    const action=path.slice('/api/discovery/'.length),read=['list','detail','profile','hot','history','capabilities','draft','settings'].includes(action);
     if(!read&&!['record','clear','edit','admin'].includes(action))fail('NOT_FOUND',404,'接口不存在');
     if(req.method!==(read?'GET':'POST'))fail('METHOD_NOT_ALLOWED',405,'不支持的请求方法');
     const name=config.environment==='production'?'__Host-session':'session';
