@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 
 export async function migrationFiles() {
   // Git may check out CRLF on Windows; checksums must match Linux releases.
-  return Promise.all(['001_foundation', '002_security_audit', '003_identity', '004_audit_retention', '005_uploads', '006_discovery', '007_community'].map(async id => {
+  return Promise.all(['001_foundation', '002_security_audit', '003_identity', '004_audit_retention', '005_uploads', '006_discovery', '007_community', '008_competition'].map(async id => {
     const up = (await readFile(new URL(`../../migrations/${id}.up.sql`, import.meta.url), 'utf8')).replaceAll('\r\n', '\n');
     const down = (await readFile(new URL(`../../migrations/${id}.down.sql`, import.meta.url), 'utf8')).replaceAll('\r\n', '\n');
     return { id, up, down, checksum: createHash('sha256').update(up).update('\0').update(down).digest('hex') };
