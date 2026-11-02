@@ -22,7 +22,8 @@ const uploads={
 };
 const storage={get:async()=>{if(scenario==='stall')await new Promise(resolve=>setTimeout(resolve,3000));return makeBytes();},health:async()=>true};
 const games=createGameHttp({config,uploads,storage,loadTimeout:1000});
-const app=createApp({config,database:null,storage,log:()=>{},games:async(req,res,id)=>{
+const community={async run(action){return action==='start'?{token:'synthetic-browser-session'}:{counted:false};}};
+const app=createApp({config,database:null,storage,log:()=>{},community,games:async(req,res,id)=>{
   // Test-only loopback controls; never imported by the application entry point.
   if(req.url?.startsWith('/__fixture?')&&req.method==='POST'&&req.headers.origin===config.mainOrigin){const next=new URL(req.url,config.mainOrigin).searchParams.get('scenario');if(!['normal','save2','missing','delay','stall','heartbeat','network'].includes(next))throw new Error('Bad fixture');scenario=next;return{route:'fixture',data:'{}'};}
   return games.main(req,res,id);

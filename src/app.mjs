@@ -3,9 +3,13 @@ import { randomUUID } from 'node:crypto';
 import { AppError, publicError } from './platform/errors.mjs';
 import { databaseReady } from './platform/migrations.mjs';
 import { createIdentityHttp } from './modules/identity/http.mjs';
+import { createCommunityHttp } from './modules/community/http.mjs';
+import { createDiscoveryHttp } from './modules/discovery/http.mjs';
 
-export function createApp({ config, database, storage, log, identity, mailbox, games }) {
+export function createApp({ config, database, storage, log, identity, mailbox, games, discovery, community }) {
+  const communityHttp = createCommunityHttp({config,community});
   const identityHttp = createIdentityHttp({ config, identity, mailbox });
+  const discoveryHttp = createDiscoveryHttp({ config, discovery });
   return createServer({ requestTimeout: 10000, headersTimeout: 5000, maxHeaderSize: 16384 }, async (req, res) => {
     const requestId = randomUUID();
     const start = performance.now();
@@ -19,7 +23,7 @@ export function createApp({ config, database, storage, log, identity, mailbox, g
     res.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'");
     try {
       const path = req.url?.split('?')[0];
-      const response = await games?.(req, res, requestId) || await identityHttp(req, res, requestId);
+      const response = await communityHttp(req,res,requestId) || await games?.(req, res, requestId) || await discoveryHttp(req, res, requestId) || await identityHttp(req, res, requestId);
       if (response) {
         route = response.route;
         status = 200;
