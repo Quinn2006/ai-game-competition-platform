@@ -1,6 +1,7 @@
 import { randomUUID, randomBytes } from 'node:crypto';
 import { AppError } from '../../platform/errors.mjs';
 import { publicProfile } from './profiles.mjs';
+import { builtinLoginName } from './builtin-accounts.mjs';
 import { cleanupAudit } from '../audit/retention.mjs';
 import { hashPassword, verifyPassword, newToken, digest, validToken, base32, verifyTotp, seal, unseal } from './crypto.mjs';
 
@@ -110,7 +111,7 @@ export function createIdentityService({ database, secret, mail, clock = () => Da
       const outbound = [];
       if (['register','resend','forgot','login','verify','reset','cancel'].includes(action)) await limit(`source:${address}`, 60);
       if (['register','resend','forgot','login'].includes(action)) {
-        input = { ...input, email: emailOf(input.email) };
+        input = { ...input, email: localAccounts && action === 'login' && builtinLoginName(input.email) ? input.email.trim().toLowerCase() : emailOf(input.email) };
         await limit(`account:${input.email}:${action}`, action === 'login' ? 10 : 5);
       }
       if (['mfa/setup','mfa/enable','revalidate','delete'].includes(action)) await limit(`sensitive:${digest(sessionToken ?? '')}`, 10);
@@ -164,7 +165,7 @@ export function createIdentityService({ database, secret, mail, clock = () => Da
           const correct = await verifyPassword(input.password, user?.password_hash);
           if (!correct || !user || (user.status !== 'active' && !(localAccounts && user.status==='pending')) || !await factor(c, user, input.code, input.recovery)) {
             await audit(c, 'login_failed', user?.id ?? null, requestId, 'failure');
-            return { failure: error('LOGIN_FAILED', 401, '邮箱、密码或验证信息不正确，或账号不可用') };
+            return { failure: error('LOGIN_FAILED', 401, '账号、密码或验证信息不正确，或账号不可用') };
           }
           if(localAccounts && user.status==='pending'){await c.query("UPDATE platform.accounts SET status='active' WHERE id=$1",[user.id]);await c.query("DELETE FROM platform.identity_tokens WHERE account_id=$1 AND purpose IN ('verify','reset')",[user.id]);user.status='active';}
           const raw = newToken();

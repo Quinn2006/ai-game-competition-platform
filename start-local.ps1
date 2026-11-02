@@ -92,6 +92,8 @@ try {
     foreach($name in $settings.Keys){$previous[$name]=[Environment]::GetEnvironmentVariable($name);[Environment]::SetEnvironmentVariable($name,$settings[$name])}
     & node scripts\migrate.mjs up
     if($LASTEXITCODE -ne 0){throw '数据库迁移失败，网站未启动。请查看上方脱敏错误。'}
+    & node scripts\local-builtin-accounts.mjs
+    if($LASTEXITCODE -ne 0){throw '内置账号初始化失败，网站未启动。'}
     Write-Host "`n本地平台：http://127.0.0.1:4320/discover"
     Write-Host '账号：http://127.0.0.1:4320/account    创作台：http://127.0.0.1:4320/studio'
     Write-Host "数据库目录：$State"
