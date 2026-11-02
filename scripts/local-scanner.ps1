@@ -1,7 +1,7 @@
-param([switch]$Update,[switch]$Start)
+param([switch]$Update,[switch]$Start,[string]$Root,[switch]$PassThru)
 $ErrorActionPreference='Stop'
 $project=Split-Path -Parent $PSScriptRoot
-$root=Join-Path $project 'tmp\phase3-clamav'
+if(-not $Root){$Root=Join-Path $project 'tmp\phase3-clamav'}
 $runtime=Join-Path $root 'runtime\clamav-1.5.4.win.x64'
 if(-not(Test-Path -LiteralPath (Join-Path $runtime 'clamd.exe'))){throw 'Verified ClamAV 1.5.4 portable runtime is required; see phase 3 documentation.'}
 $database=Join-Path $root 'database'
@@ -35,6 +35,7 @@ if($Start){
     }catch{}finally{$client.Dispose()}
     Start-Sleep -Milliseconds 250
   }
-  if(-not $ready){throw "Scanner did not become ready; inspect logs in $configuration (PID $($process.Id))"}
+  if(-not $ready){if(-not $process.HasExited){$process.Kill()};throw "Scanner did not become ready; inspect logs in $configuration"}
   Write-Output "Local scanner ready on 127.0.0.1:3310; PID: $($process.Id); configuration: $configuration"
+  if($PassThru){Write-Output $process}
 }
