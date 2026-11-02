@@ -5,8 +5,11 @@ import { databaseReady } from './platform/migrations.mjs';
 import { createIdentityHttp } from './modules/identity/http.mjs';
 import { createCommunityHttp } from './modules/community/http.mjs';
 import { createDiscoveryHttp } from './modules/discovery/http.mjs';
+import { createOperationsHttp } from './modules/operations/http.mjs';
+import { appendAudit } from './modules/audit/repository.mjs';
 
-export function createApp({ config, database, storage, log, identity, mailbox, games, discovery, community }) {
+export function createApp({ config, database, storage, log, identity, mailbox, games, discovery, community, operations }) {
+  const operationsHttp = createOperationsHttp({config,operations});
   const communityHttp = createCommunityHttp({config,community});
   const identityHttp = createIdentityHttp({ config, identity, mailbox });
   const discoveryHttp = createDiscoveryHttp({ config, discovery });
@@ -23,7 +26,7 @@ export function createApp({ config, database, storage, log, identity, mailbox, g
     res.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'");
     try {
       const path = req.url?.split('?')[0];
-      const response = await communityHttp(req,res,requestId) || await games?.(req, res, requestId) || await discoveryHttp(req, res, requestId) || await identityHttp(req, res, requestId);
+      const response = await operationsHttp(req,res,requestId) || await communityHttp(req,res,requestId) || await games?.(req, res, requestId) || await discoveryHttp(req, res, requestId) || await identityHttp(req, res, requestId);
       if (response) {
         route = response.route;
         status = 200;
@@ -52,6 +55,7 @@ export function createApp({ config, database, storage, log, identity, mailbox, g
       const result = publicError(error, requestId);
       status = result.status;
       code = result.body.error.code;
+      if(status>=500 && database) { try { await appendAudit(database,{action:'system.error',requestId,outcome:'failure'}); } catch { /* readiness may fail before migrations exist */ } }
       res.writeHead(status);
       res.end(req.method === 'HEAD' ? undefined : JSON.stringify(result.body));
     } finally {
