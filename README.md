@@ -1,4 +1,4 @@
-当前阶段5交付及验证以 [阶段5手册](docs/phase-5/development.md) 为准；下文保留此前阶段记录。
+当前阶段6本地交付以 [阶段6手册](docs/phase-6/development.md) 和 [验证记录](docs/phase-6/verification.md) 为准。比赛入口 `/competitions`；43项测试和真实PostgreSQL验证通过，完整人工与生产验收仍待完成。分支 `codex/phase-6-competition`，下文保留此前阶段记录。
 
 # AI 小游戏比赛平台
 

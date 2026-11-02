@@ -64,3 +64,11 @@ async function init(){
   await history();terms($('#hot'),(await api('hot')).terms);await load();
 }
 init().catch(e=>{message(e.message,true);$('#retry').hidden=false;});
+
+if(location.pathname==='/'){
+ fetch('/api/competition/awards').then(r=>r.ok?r.json():{items:[]}).then(({items})=>{
+  if(!items.length)return;const section=node('section');section.append(node('h2','获奖作品'));
+  for(const award of items)section.append(node('p',award.contest+' · '+award.name+' · '+award.title));
+  section.append(link('查看比赛与完整成绩','/competitions'));$('#main').append(section);
+ }).catch(()=>{});
+}

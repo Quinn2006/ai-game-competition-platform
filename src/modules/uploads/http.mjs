@@ -13,7 +13,7 @@ async function body(req,max) {
   for await (const part of req) { size+=part.length; if(size>max) fail('BODY_TOO_LARGE',413); parts.push(part); }
   return Buffer.concat(parts);
 }
-export function createGameHttp({ config, uploads, storage, limits=defaultLimits, loadTimeout=30000 }) {
+export function createGameHttp({ config, uploads, storage, competition, limits=defaultLimits, loadTimeout=30000 }) {
   const tickets=new Map();
   let cached=null;
   let receiving=false;
@@ -44,8 +44,9 @@ export function createGameHttp({ config, uploads, storage, limits=defaultLimits,
       res.setHeader('Content-Type','image/svg+xml');
       return {route:path,data:await QRCode.toString(config.mainOrigin+'/play?work='+work.work_id,{type:'svg',errorCorrectionLevel:'M'})};
     }
-    const cookies=(req.headers.cookie??'').split(';').map(x=>x.trim()).filter(x=>x.startsWith('session='));
-    const context={requestId,sessionToken:cookies.length===1?cookies[0].slice(8):undefined};
+    const cookieName=config.environment==='production'?'__Host-session':'session';
+    const cookies=(req.headers.cookie??'').split(';').map(x=>x.trim()).filter(x=>x.startsWith(cookieName+'='));
+    const context={requestId,sessionToken:cookies.length===1?cookies[0].slice(cookieName.length+1):undefined};
     if(action==='play') {
       if(req.method!=='GET') fail('METHOD_NOT_ALLOWED',405);
       return {route:path,data:JSON.stringify(issue(await uploads.published(url.searchParams.get('work'))))};
@@ -68,6 +69,14 @@ export function createGameHttp({ config, uploads, storage, limits=defaultLimits,
       try {input=JSON.parse((await body(req,16384)).toString());} catch {fail('INVALID_JSON');}
       if(!input || typeof input!=='object' || Array.isArray(input)) fail('INVALID_JSON');
     }
+    if(action==='judge-preview'){
+      if(!competition)fail('NOT_FOUND',404);
+      const version=await competition.reviewVersion(context,input.subjectId),key=randomBytes(32).toString('hex');
+      for(const [id,t] of tickets)if(t.expires<Date.now())tickets.delete(id);
+      if(tickets.size>=1000)fail('BUSY',429);
+      tickets.set(key,{version,context,subjectId:input.subjectId,expires:Date.now()+30*60000});
+      return {route:path,data:JSON.stringify({src:`${config.gameOrigin}/g/${key}/index.html`})};
+    }
     const result=action==='preview'?issue(await uploads.preview(context,input.workId,input.versionId),context):await uploads.run(action,input,context,bytes);
     return {route:path,data:JSON.stringify(result)};
   };
@@ -82,7 +91,7 @@ export function createGameHttp({ config, uploads, storage, limits=defaultLimits,
       const match=/^\/g\/([a-f0-9]{64})\/(.+)$/.exec(new URL(req.url,config.gameOrigin).pathname);
       const ticket=match&&tickets.get(match[1]);
       if(!ticket || ticket.expires<=Date.now()) fail('NOT_FOUND',404);
-      const v=ticket.context?await uploads.preview(ticket.context,ticket.version.work_id,ticket.version.id):await uploads.published(ticket.version.work_id);
+      const v=ticket.subjectId?await competition.reviewVersion(ticket.context,ticket.subjectId):ticket.context?await uploads.preview(ticket.context,ticket.version.work_id,ticket.version.id):await uploads.published(ticket.version.work_id);
       if(v.id!==ticket.version.id) fail('VERSION_CHANGED',409);
       const base=`${config.gameOrigin}/g/${match[1]}/`,external=v.metadata.domains.join(' ');
       res.setHeader('Content-Security-Policy',`default-src 'none'; sandbox allow-scripts; script-src ${base} 'unsafe-inline' ${external}; style-src ${base} 'unsafe-inline' ${external}; img-src ${base} data: ${external}; media-src ${base} ${external}; font-src ${base} ${external}; connect-src ${base} ${external}; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors ${config.mainOrigin}`);
