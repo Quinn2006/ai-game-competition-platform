@@ -32,6 +32,8 @@ npm run check:baseline
 
 ## 实际验证与边界
 
+完整HTTP与数据库联调见 [integration.md](integration.md)。
+
 - `npm test`：39/39通过；`npm run check`：61模块通过；基线130条需求、18项决策检查通过。
 - 独立PostgreSQL：七个迁移空表down/up，12个并发点赞、取消重赞、收藏隔离、10条滚动限流、11层评论/父删除保留回复、管理员过滤、失败试玩、每日去重、游客登录合并、会话盗用/重放、风险权限、注销收藏及30天清理通过。
 - 阶段1—3完整PostgreSQL迁移/身份/上传回归通过；社区用例已接入该CI入口。
