@@ -28,6 +28,7 @@ jobs:
       - run: npm run check
       - run: npm run check:baseline
       - run: npm test
+      - run: node scripts/ops-local-load.mjs
       - run: npm run test:postgres
         env:
           APP_ENV: test
