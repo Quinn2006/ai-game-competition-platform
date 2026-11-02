@@ -5,6 +5,7 @@ import { databaseReady } from './platform/migrations.mjs';
 import { createIdentityHttp } from './modules/identity/http.mjs';
 import { createCommunityHttp } from './modules/community/http.mjs';
 import { createDiscoveryHttp } from './modules/discovery/http.mjs';
+import { dependenciesReady } from './platform/health.mjs';
 
 export function createApp({ config, database, storage, log, identity, mailbox, games, discovery, community }) {
   const communityHttp = createCommunityHttp({config,community});
@@ -39,8 +40,7 @@ export function createApp({ config, database, storage, log, identity, mailbox, g
       }
       let data = { status: 'alive', requestId };
       if (route === '/health/ready') {
-        const results = await Promise.allSettled([databaseReady(database, config.environment), storage.health()]);
-        if (results.some(result => result.status !== 'fulfilled' || result.value !== true)) {
+        if (!await dependenciesReady([() => databaseReady(database, config.environment), () => storage.health()])) {
           throw new AppError('DEPENDENCIES_NOT_READY', 503, '依赖服务尚未就绪');
         }
         data = { status: 'ready', requestId };

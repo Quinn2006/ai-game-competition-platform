@@ -33,6 +33,8 @@ npm start
 - [阶段 1 启动、环境变量、迁移与人工验收说明](docs/phase-1/development.md)
 - [阶段 1 验证与阻塞记录](docs/phase-1/verification.md)
 - [阶段 1 架构与模块边界](docs/phase-1/architecture.md)
+- [阶段 8 本地运维与部署手册](docs/phase-8/runbook.md)
+- [阶段 8 验证、需求核对与上线阻塞](docs/phase-8/verification.md)
 
 - [阶段 0 验证记录](docs/phase-0/verification.md)
 - [130 条需求追踪与用例](docs/phase-0/requirements.md)
