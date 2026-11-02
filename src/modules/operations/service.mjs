@@ -1,27 +1,33 @@
+import {eraseChats,lifecycleAction,cleanupLifecycle} from './lifecycle.mjs';
 import { randomUUID } from 'node:crypto';
 import { fail,uuid,textField,dateRange,csv,excelXml } from './policy.mjs';
 import { profileOf } from '../discovery/service.mjs';
 
 export const deletionParticipant={async check(){},async finalize(c,id){
  if(!(await c.query("SELECT to_regclass('platform.notifications') AS name")).rows[0].name)return;
- for(const table of ['notifications','support_chats','support_feedback'])await c.query(`DELETE FROM platform.${table} WHERE account_id=$1`,[id]);
+ await eraseChats(c,id);
+ for(const table of ['notifications','support_feedback'])await c.query(`DELETE FROM platform.${table} WHERE account_id=$1`,[id]);
 }};
-export function createOperationsService({database,identity,mail,ai,contactEmail='',clock=()=>Date.now()}){
+export function createOperationsService({database,identity,mail,ai,contactEmail='',clock=()=>Date.now(),siteOnly=true}){
+ if(ai&&(!ai.privacy||ai.privacy.training!==false||ai.privacy.retentionDays>90||!Number.isInteger(ai.privacy.retentionDays)||ai.privacy.retentionDays<0||typeof ai.delete!=='function'))throw Error('AI privacy contract required');
  const audit=(c,u,action,target,context,detail={})=>c.query('INSERT INTO platform.operations_events(id,actor_id,action,target_id,request_id,detail) VALUES($1,$2,$3,$4,$5,$6)',[randomUUID(),u?.id??null,action,target,context.requestId,detail]);
  const admin=u=>{if(!u.roles.includes('admin'))fail('FORBIDDEN',403);};
  async function transaction(fn){const c=await database.connect();try{await c.query('BEGIN');const r=await fn(c);await c.query('COMMIT');return r;}catch(e){await c.query('ROLLBACK');throw e;}finally{c.release();}}
- async function notify(c,{recipients,key,title,body,important=false,archive=false,archiveUntil=null}){
+ async function notify(c,{recipients,key,title,body,important=false,archive=false,archiveUntil=null,contestId=null}){
   for(const accountId of [...new Set(recipients)]){
    const id=randomUUID();const inserted=await c.query(`INSERT INTO platform.notifications(id,account_id,event_key,title,body,important)
     SELECT $1,id,$3,$4,$5,$6 FROM platform.accounts WHERE id=$2 AND status='active' ON CONFLICT(account_id,event_key) DO NOTHING RETURNING id`,[id,accountId,key,title,body,important]);
    if(!inserted.rowCount)continue;
-   if(important)await c.query('INSERT INTO platform.notification_mail(id) VALUES($1)',[id]);
-   if(archive)await c.query('INSERT INTO platform.notification_archives(id,account_id,event_key,title,body,archive_until) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING',[randomUUID(),accountId,key,title,body,archiveUntil]);
+   if(important&&!siteOnly)await c.query('INSERT INTO platform.notification_mail(id) VALUES($1)',[id]);
+   if(archive)await c.query('INSERT INTO platform.notification_archives(id,account_id,event_key,title,body,archive_until,contest_id) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING',[randomUUID(),accountId,key,title,body,archiveUntil,contestId]);
   }
  }
  async function announcements(){return {items:(await database.query("SELECT id,title,body,image,importance,pinned,publish_at,expires_at FROM platform.announcements WHERE state='published' AND publish_at<=$1 AND (expires_at IS NULL OR expires_at>$1) ORDER BY pinned DESC,publish_at DESC LIMIT 100",[new Date(clock())])).rows};}
  async function report(c,input){const [start,end]=dateRange(input);return {range:{start,end},totals:(await c.query(`SELECT
   (SELECT count(*) FROM platform.accounts WHERE status='active') AS users,
+  (SELECT count(*) FROM platform.competitions) AS competitions,
+  (SELECT count(*) FROM platform.contest_members) AS participants,
+  (SELECT count(*) FROM platform.contest_reviews WHERE valid AND submitted_at IS NOT NULL) AS reviews,
   (SELECT count(*) FROM platform.works) AS works,
   (SELECT count(*) FROM platform.works WHERE published_version IS NOT NULL) AS published,
   (SELECT count(*) FROM platform.community_comments WHERE NOT deleted) AS comments,
@@ -31,7 +37,7 @@ export function createOperationsService({database,identity,mail,ai,contactEmail=
   (SELECT count(*) FROM platform.works WHERE (created_at AT TIME ZONE 'Asia/Shanghai')::date=d::date) AS works,
   (SELECT count(*) FROM platform.play_daily WHERE day=d::date) AS plays
   FROM generate_series(($1::timestamptz AT TIME ZONE 'Asia/Shanghai')::date,($2::timestamptz AT TIME ZONE 'Asia/Shanghai')::date-1,interval '1 day') d ORDER BY d`,[start,end])).rows,
-  limitations:['有效试玩按保留中的每日明细汇总，超过明细保留期的日期不可重建。','比赛与评审统计等待阶段6联调。']};}
+  limitations:['有效试玩按保留中的每日明细汇总，超过明细保留期的日期不可重建。','比赛、报名及有效评分数量为当前实时总数。']};}
  async function users(c,input){const q=String(input.q??'').trim();if(q.length>100)fail('INVALID_QUERY');const state=input.status??'',role=input.role??'';
   if(state&&!['active','pending','deleting','deleted','disabled'].includes(state)||role&&!['admin','judge'].includes(role))fail('INVALID_FILTER');
   const [from,to]=dateRange(input),offset=Number(input.offset??0);if(!Number.isSafeInteger(offset)||offset<0||offset>100000)fail('INVALID_OFFSET');
@@ -39,7 +45,8 @@ export function createOperationsService({database,identity,mail,ai,contactEmail=
  const dangerous=new Set(['batch','announcement-save','announcement-action','settings','sensitive-edit']);
  const service={
   announcements,
-  async status(){return {platform:'available',mail:mail?'adapter-configured':'unconfigured',ai:ai?'adapter-configured':'unconfigured',contactEmail};},
+  notifyInTransaction:notify,
+  async status(){return {platform:'available',mail:siteOnly?'disabled-site-only':mail?'adapter-configured':'unconfigured',ai:ai?'adapter-configured':'unconfigured',contactEmail};},
   // Internal integration only; never accepts arbitrary recipients from a public HTTP route.
   async notifyBusiness(event){if(!Array.isArray(event.recipients)||event.recipients.some(id=>!uuid(id))||!event.key)fail('INVALID_EVENT');await transaction(c=>notify(c,{...event,title:textField(event.title,100),body:textField(event.body,10000)}));},
   async run(action,input,context){
@@ -50,13 +57,17 @@ export function createOperationsService({database,identity,mail,ai,contactEmail=
    if(action==='chat'){
     const question=textField(input.question,2000);
     // Provider receives public help only, with no tools, identity, database or admin context.
-    const ticket=await identity.authorized(context,async(c,u)=>{await c.query('SELECT pg_advisory_xact_lock(hashtext($1))',['support:'+u.id]);const n=(await c.query("SELECT count(*) FROM platform.support_chats WHERE account_id=$1 AND ended_at>CURRENT_TIMESTAMP-interval '1 minute'",[u.id])).rows[0];if(Number(n.count)>=5)fail('RATE_LIMITED',429);const id=randomUUID();await c.query('INSERT INTO platform.support_chats(id,account_id,question,answer) VALUES($1,$2,$3,$4)',[id,u.id,question,'客服请求处理中']);return {id,userId:u.id};});
+    const ticket=await identity.authorized(context,async(c,u)=>{await c.query('SELECT pg_advisory_xact_lock(hashtext($1))',['support:'+u.id]);const n=(await c.query("SELECT count(*) FROM platform.support_chats WHERE account_id=$1 AND ended_at>CURRENT_TIMESTAMP-interval '1 minute'",[u.id])).rows[0];if(Number(n.count)>=5)fail('RATE_LIMITED',429);const id=randomUUID();await c.query('INSERT INTO platform.support_chats(id,account_id,question,answer,provider_key,pending) VALUES($1,$2,$3,$4,$5,true)',[id,u.id,question,'客服请求处理中',ai?id:null]);return {id,userId:u.id};});
     let answer='AI 客服暂不可用。请查看帮助中心或提交反馈。',available=false;
-    if(ai){try{answer=textField(await ai.answer({question,knowledge:'上传已授权的小游戏ZIP；审核通过后公开；账号问题通过反馈联系管理员。',signal:AbortSignal.timeout(15000)}),10000);available=true;}catch{answer='AI 客服暂时无法回答，请提交反馈联系管理员。';}}
+    if(ai){try{answer=textField(await ai.answer({requestId:ticket.id,question,knowledge:'上传已授权的小游戏ZIP；审核通过后公开；账号问题通过反馈联系管理员。',signal:AbortSignal.timeout(15000)}),10000);available=true;}catch{answer='AI 客服暂时无法回答，请提交反馈联系管理员。';}}
     if(contactEmail)answer+=' 管理员邮箱：'+contactEmail;
-    await database.query('UPDATE platform.support_chats SET answer=$2,ended_at=$3 WHERE id=$1 AND account_id=$4',[ticket.id,answer,new Date(clock()),ticket.userId]);return {answer,available,contactEmail};
+    const saved=await database.query('UPDATE platform.support_chats SET answer=$2,ended_at=$3,pending=false WHERE id=$1 AND account_id=$4',[ticket.id,answer,new Date(clock()),ticket.userId]);
+    // A deletion or account closure during a request must not resurrect local or remote content.
+    if(!saved.rowCount&&ai)await database.query('INSERT INTO platform.support_deletions(provider_key) VALUES($1) ON CONFLICT DO NOTHING',[ticket.id]);
+    return {id:ticket.id,answer:saved.rowCount?answer:'对话已被清空。',available:saved.rowCount?available:false,contactEmail};
    }
    return identity.authorized(context,async(c,u)=>{
+    const lifecycle=await lifecycleAction(c,u,action,input);if(lifecycle){if(action==='complaint-close')await audit(c,u,action,input.id,context);return lifecycle;}
     if(action==='notifications'){
      const offset=Number(input.offset??0);if(!Number.isSafeInteger(offset)||offset<0||offset>100000)fail('INVALID_OFFSET');
      const rows=(await c.query('SELECT id,title,body,important,read_at,created_at FROM platform.notifications WHERE account_id=$1 ORDER BY created_at DESC,id LIMIT 101 OFFSET $2',[u.id,offset])).rows;
@@ -73,7 +84,7 @@ export function createOperationsService({database,identity,mail,ai,contactEmail=
     if(action==='dashboard')return report(c,input);
     if(action==='users')return users(c,input);
     if(action==='works')return {items:(await c.query(`SELECT w.id,COALESCE(p.title,w.title) AS title,w.published_version,h.work_id IS NOT NULL AS hidden,COALESCE(p.featured,false) AS featured FROM platform.works w LEFT JOIN platform.work_profiles p ON p.work_id=w.id LEFT JOIN platform.operations_hidden h ON h.work_id=w.id ORDER BY w.created_at DESC LIMIT 100`)).rows};
-    if(action==='todos')return {reviews:(await c.query("SELECT id,work_id,status FROM platform.game_versions WHERE status IN ('pending','reviewing') AND NOT withdrawn ORDER BY created_at LIMIT 100")).rows,risks:(await c.query('SELECT id,work_id,reason FROM platform.community_risks WHERE resolved_at IS NULL ORDER BY created_at LIMIT 100')).rows,feedback:(await c.query("SELECT id,body,created_at FROM platform.support_feedback WHERE state='open' ORDER BY created_at LIMIT 100")).rows,mail:(await c.query("SELECT count(*) AS pending FROM platform.notification_mail WHERE state='pending'")).rows[0],competition:'阶段6待联调'};
+    if(action==='todos')return {reviews:(await c.query("SELECT id,work_id,status FROM platform.game_versions WHERE status IN ('pending','reviewing') AND NOT withdrawn ORDER BY created_at LIMIT 100")).rows,risks:(await c.query('SELECT id,work_id,reason FROM platform.community_risks WHERE resolved_at IS NULL ORDER BY created_at LIMIT 100')).rows,feedback:(await c.query("SELECT id,body,created_at FROM platform.support_feedback WHERE state='open' ORDER BY created_at LIMIT 100")).rows,mail:(await c.query("SELECT count(*) AS pending FROM platform.notification_mail WHERE state='pending'")).rows[0],competition:(await c.query("SELECT (SELECT count(*) FROM platform.contest_members WHERE NOT verified) AS identities,(SELECT count(*) FROM platform.contest_changes WHERE state='pending') AS changes,(SELECT count(*) FROM platform.contest_appeals WHERE resolved_at IS NULL) AS appeals")).rows[0]};
     if(action==='errors'){const [from,to]=dateRange(input);if(input.requestId&&!uuid(input.requestId))fail('INVALID_ID');return {items:(await c.query('SELECT id,action,request_id,outcome,occurred_at FROM platform.audit_events WHERE occurred_at>=$1 AND occurred_at<$2 AND ($3::uuid IS NULL OR request_id=$3) ORDER BY occurred_at DESC LIMIT 100',[from,to,input.requestId||null])).rows};}
     if(action==='audit')return {items:(await c.query('SELECT action,target_id,request_id,detail,created_at FROM platform.operations_events ORDER BY created_at DESC LIMIT 100')).rows};
     if(action==='announcement-list')return {items:(await c.query('SELECT * FROM platform.announcements ORDER BY created_at DESC LIMIT 100')).rows};
@@ -112,7 +123,7 @@ export function createOperationsService({database,identity,mail,ai,contactEmail=
      if(!['withdraw','pin','unpin'].includes(input.operation))fail('INVALID_ACTION');
      const row=(await c.query('SELECT state FROM platform.announcements WHERE id=$1 FOR UPDATE',[input.resourceId])).rows[0];if(!row||['withdrawn','expired'].includes(row.state))fail('INVALID_TRANSITION',409);
      await c.query(input.operation==='withdraw'?"UPDATE platform.announcements SET state='withdrawn' WHERE id=$1":'UPDATE platform.announcements SET pinned=$2 WHERE id=$1',input.operation==='withdraw'?[input.resourceId]:[input.resourceId,input.operation==='pin']);
-     await audit(c,u,'announcement_'+input.operation,input.resourceId,context);return {ok:true,message:'已更新；已发出的邮件无法收回。'};
+     await audit(c,u,'announcement_'+input.operation,input.resourceId,context);return {ok:true,message:siteOnly?'已更新；已生成的站内通知保留历史记录。':'已更新；已发出的邮件无法收回。'};
     }
     if(action==='settings'){const days=Number(input.days);if(!Number.isInteger(days)||days<30||days>180)fail('INVALID_RETENTION');await c.query('UPDATE platform.operations_settings SET notification_days=$1 WHERE id',[days]);await audit(c,u,'notification_retention',input.resourceId,context,{days});return {ok:true};}
     if(action==='sensitive-edit'){
@@ -139,11 +150,15 @@ export function createOperationsService({database,identity,mail,ai,contactEmail=
     const pending=(await c.query("SELECT * FROM platform.announcements WHERE state='published' AND notified_revision<revision FOR UPDATE")).rows;
     for(const a of pending){const recipients=(await c.query("SELECT id FROM platform.accounts WHERE status='active'")).rows.map(r=>r.id);await notify(c,{recipients,key:`announcement:${a.id}:${a.revision}`,title:a.title,body:a.body,important:a.importance!=='normal'});await c.query('UPDATE platform.announcements SET notified_revision=revision WHERE id=$1',[a.id]);}
     await c.query("DELETE FROM platform.notifications WHERE created_at<CURRENT_TIMESTAMP-(SELECT notification_days FROM platform.operations_settings WHERE id)*interval '1 day'");
-    await c.query('DELETE FROM platform.notification_archives WHERE archive_until IS NOT NULL AND archive_until<CURRENT_TIMESTAMP');
-    await c.query("DELETE FROM platform.support_chats WHERE ended_at<CURRENT_TIMESTAMP-interval '90 days'");
+    await c.query('DELETE FROM platform.notification_archives WHERE contest_id IS NULL AND archive_until IS NOT NULL AND archive_until<CURRENT_TIMESTAMP');
+    await cleanupLifecycle(c);
     await c.query("DELETE FROM platform.operations_events WHERE created_at<CURRENT_TIMESTAMP-interval '6 months'");
    });
-   if(mail)await transaction(async c=>{
+   if(ai)await transaction(async c=>{
+    const jobs=(await c.query('SELECT provider_key FROM platform.support_deletions WHERE next_attempt<=CURRENT_TIMESTAMP ORDER BY requested_at LIMIT 20 FOR UPDATE SKIP LOCKED')).rows;
+    for(const job of jobs){try{await ai.delete({requestId:job.provider_key,signal:AbortSignal.timeout(15000)});await c.query('DELETE FROM platform.support_deletions WHERE provider_key=$1',[job.provider_key]);}catch{await c.query("UPDATE platform.support_deletions SET attempts=attempts+1,next_attempt=CURRENT_TIMESTAMP+interval '5 minutes' WHERE provider_key=$1",[job.provider_key]);}}
+   });
+   if(mail&&!siteOnly)await transaction(async c=>{
     const messages=(await c.query("SELECT m.id,n.title,n.body,a.email FROM platform.notification_mail m JOIN platform.notifications n ON n.id=m.id JOIN platform.accounts a ON a.id=n.account_id WHERE m.state='pending' AND m.next_attempt<=CURRENT_TIMESTAMP AND a.status='active' ORDER BY m.next_attempt LIMIT 20 FOR UPDATE OF m SKIP LOCKED")).rows;
     for(const m of messages){try{await mail({idempotencyKey:m.id,to:m.email,subject:m.title,body:m.body,signal:AbortSignal.timeout(15000)});await c.query("UPDATE platform.notification_mail SET state='sent',delivered_at=CURRENT_TIMESTAMP WHERE id=$1",[m.id]);}catch{await c.query("UPDATE platform.notification_mail SET attempts=attempts+1,next_attempt=CURRENT_TIMESTAMP+interval '5 minutes' WHERE id=$1",[m.id]);}}
    });

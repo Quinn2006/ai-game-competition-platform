@@ -1,9 +1,10 @@
 import { readFile } from 'node:fs/promises';
 import { fail } from './policy.mjs';
 const assets=new Map(['/admin','/notifications','/announcements','/help','/feedback','/support','/status'].map(p=>[p,['operations.html','text/html']]));
+assets.set('/operations/lifecycle.mjs',['support-lifecycle.mjs','text/javascript']);
 assets.set('/operations/ui.mjs',['operations.mjs','text/javascript']);assets.set('/operations/style.css',['operations.css','text/css']);assets.set('/operations/banner.mjs',['announcement-banner.mjs','text/javascript']);
-const reads=new Set(['announcements','status','dashboard','users','works','todos','errors','audit','announcement-list','settings-read','notifications','my-feedback']);
-const writes=new Set(['read','feedback','chat','export','batch','announcement-save','announcement-action','settings','sensitive-edit','feedback-reply']);
+const reads=new Set(['chat-history','my-complaints','complaints','announcements','status','dashboard','users','works','todos','errors','audit','announcement-list','settings-read','notifications','my-feedback']);
+const writes=new Set(['chat-delete','complaint','complaint-close','read','feedback','chat','export','batch','announcement-save','announcement-action','settings','sensitive-edit','feedback-reply']);
 export function createOperationsHttp({config,operations}){return async(req,res,requestId)=>{
  const path=new URL(req.url,config.mainOrigin).pathname;
  if(!assets.has(path)&&!path.startsWith('/api/operations/'))return null;

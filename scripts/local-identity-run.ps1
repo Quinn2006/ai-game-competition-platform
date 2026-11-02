@@ -18,7 +18,7 @@ if($LASTEXITCODE -ne 0){
 $previous=@{}
 foreach($name in @('APP_ENV','DATABASE_URL','SESSION_SECRET','LOCAL_MAIL_PREVIEW','LOCAL_GAMES')){$previous[$name]=[Environment]::GetEnvironmentVariable($name)}
 try{
-  $env:APP_ENV='development';$env:DATABASE_URL=$localConfig.databaseDevelopment;$env:SESSION_SECRET=$localConfig.sessionSecret;$env:LOCAL_MAIL_PREVIEW='1'
+  $env:APP_ENV='development';$env:DATABASE_URL=$localConfig.databaseDevelopment;$env:SESSION_SECRET=$localConfig.sessionSecret;$env:LOCAL_MAIL_PREVIEW='0'
   if($Games){$env:LOCAL_GAMES='1'}else{$env:LOCAL_GAMES='0'}
   Push-Location $project
   try{
@@ -26,7 +26,7 @@ try{
     if($LASTEXITCODE -ne 0){throw 'Migration failed; server not started'}
     Write-Output 'Account page: http://127.0.0.1:4320/account'
     if($Games){Write-Output 'Game studio: http://127.0.0.1:4320/studio (real ClamAV required for review approval)'}
-    Write-Output 'Development mailbox: http://127.0.0.1:4320/dev/mail (synthetic data only)'
+    Write-Output 'Local accounts: registration is immediate; email is only a username. Notifications stay on site.'
     node src\server.mjs
   }finally{Pop-Location}
 }finally{foreach($name in $previous.Keys){[Environment]::SetEnvironmentVariable($name,$previous[$name])}}

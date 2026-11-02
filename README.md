@@ -1,4 +1,7 @@
+2026-11-02 最新决定与联合验收以 [阶段6/7合并及本地账号说明](docs/phase-7/integration.md) 为准：注册无需邮箱验证，全部通知仅站内；取消真实邮件验收；本地AI隐私流程已测，真实AI供应商仍未配置。
+
 阶段7本地运营后台、通知公告、反馈与服务接口已实现；真实邮件/AI和阶段6联调待验收。见[开发说明](docs/phase-7/development.md)与[验证记录](docs/phase-7/verification.md)。
+当前阶段6本地交付以 [阶段6手册](docs/phase-6/development.md) 和 [验证记录](docs/phase-6/verification.md) 为准。比赛入口 `/competitions`；43项测试和真实PostgreSQL验证通过，完整人工与生产验收仍待完成。分支 `codex/phase-6-competition`，下文保留此前阶段记录。
 
 阶段4与阶段5已合入主分支；阶段5本地完整 HTTP 链路及数据库联调通过，见[阶段5联调记录](docs/phase-5/integration.md)。阶段3真实扫描验证保留在主分支；生产环境及人工验收仍待完成。下文保留此前阶段记录。
 

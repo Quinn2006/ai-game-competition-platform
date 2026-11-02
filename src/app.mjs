@@ -5,11 +5,13 @@ import { databaseReady } from './platform/migrations.mjs';
 import { createIdentityHttp } from './modules/identity/http.mjs';
 import { createCommunityHttp } from './modules/community/http.mjs';
 import { createDiscoveryHttp } from './modules/discovery/http.mjs';
+import { createCompetitionHttp } from './modules/competition/http.mjs';
 import { createOperationsHttp } from './modules/operations/http.mjs';
 import { appendAudit } from './modules/audit/repository.mjs';
 
-export function createApp({ config, database, storage, log, identity, mailbox, games, discovery, community, operations }) {
+export function createApp({ config, database, storage, log, identity, mailbox, games, discovery, community, operations, competition }) {
   const operationsHttp = createOperationsHttp({config,operations});
+  const competitionHttp = createCompetitionHttp({config,competition});
   const communityHttp = createCommunityHttp({config,community});
   const identityHttp = createIdentityHttp({ config, identity, mailbox });
   const discoveryHttp = createDiscoveryHttp({ config, discovery });
@@ -26,7 +28,7 @@ export function createApp({ config, database, storage, log, identity, mailbox, g
     res.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'");
     try {
       const path = req.url?.split('?')[0];
-      const response = await operationsHttp(req,res,requestId) || await communityHttp(req,res,requestId) || await games?.(req, res, requestId) || await discoveryHttp(req, res, requestId) || await identityHttp(req, res, requestId);
+      const response = await operationsHttp(req,res,requestId) || await competitionHttp(req,res,requestId) || await communityHttp(req,res,requestId) || await games?.(req, res, requestId) || await discoveryHttp(req, res, requestId) || await identityHttp(req, res, requestId);
       if (response) {
         route = response.route;
         status = 200;

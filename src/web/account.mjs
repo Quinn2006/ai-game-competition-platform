@@ -63,9 +63,7 @@ async function renderRoute() {
 const fragment=new URLSearchParams(location.hash.slice(1));
 const purpose=['verify','reset','cancel'].find(x=>fragment.has(x));
 if(purpose){
-  const token=fragment.get(purpose);history.replaceState(null,'','/account');
-  content.innerHTML=`<h2>${purpose==='reset'?'重置密码':purpose==='verify'?'确认邮箱':'取消注销'}</h2><form data-action="${purpose}">${purpose==='reset'?'<label>新密码<input type="password" name="password" autocomplete="new-password" required></label><p class="hint">15—128 个字符</p>':''}<button class="primary">确认操作</button></form>`;
-  const input=document.createElement('input');input.type='hidden';input.name='token';input.value=token;content.querySelector('form').append(input);
+  history.replaceState(null,'','/account');show('login');notice('邮箱验证与重置链接已停用，请使用本机管理工具。');
 }else{
   show('login');
   try {const result=await api('me');currentUser=result.user;show(result.setupOnly?'security':'profile');} catch(e) {if(!e.message.includes('登录')) notice(e.message,true);}

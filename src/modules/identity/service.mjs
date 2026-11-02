@@ -17,7 +17,7 @@ const passwordOf = value => {
 const uuid = value => typeof value === 'string' && /^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(value);
 const view = user => ({ ...publicProfile(user), email: user.email, roles: user.roles, mfaEnabled: Boolean(user.mfa_secret), status: user.status });
 
-export function createIdentityService({ database, secret, mail, clock = () => Date.now(), deletionParticipants = [] }) {
+export function createIdentityService({ database, secret, mail, clock = () => Date.now(), deletionParticipants = [], localAccounts = false }) {
   async function transaction(work) {
     const client = await database.connect();
     try {
@@ -106,6 +106,7 @@ export function createIdentityService({ database, secret, mail, clock = () => Da
     },
     async execute(action, input = {}, context) {
       const { requestId, address = 'local', sessionToken } = context;
+      if(localAccounts && ['verify','resend','forgot','reset','cancel'].includes(action)) fail('LOCAL_ACCOUNT_ONLY',400,'邮箱仅作账号名，找回密码或取消注销请使用本机管理工具');
       const outbound = [];
       if (['register','resend','forgot','login','verify','reset','cancel'].includes(action)) await limit(`source:${address}`, 60);
       if (['register','resend','forgot','login'].includes(action)) {
@@ -121,11 +122,11 @@ export function createIdentityService({ database, secret, mail, clock = () => Da
           const hash = await hashPassword(password); // Same expensive path for duplicate addresses.
           if (!existing) {
             const user = { id: randomUUID(), email: input.email };
-            await c.query("INSERT INTO platform.accounts (id,email,password_hash,status,nickname) VALUES ($1,$2,$3,'pending','新玩家')", [user.id, user.email, hash]);
-            outbound.push({ to: user.email, purpose: 'verify', token: await token(c, user, 'verify', 86400000) });
+            await c.query("INSERT INTO platform.accounts (id,email,password_hash,status,nickname) VALUES ($1,$2,$3,$4,'新玩家')", [user.id, user.email, hash,localAccounts?'active':'pending']);
+            if(!localAccounts) outbound.push({ to: user.email, purpose: 'verify', token: await token(c, user, 'verify', 86400000) });
             await audit(c, 'registered', user.id, requestId);
           }
-          return { message: '如果邮箱可用，验证邮件已准备好，请查收。' };
+          return { message: localAccounts?'注册请求已处理。若账号名未被占用，现在可直接登录。':'如果邮箱可用，验证邮件已准备好，请查收。' };
         }
         if (action === 'resend' || action === 'forgot') {
           const user = (await c.query('SELECT * FROM platform.accounts WHERE email=$1 FOR UPDATE', [input.email])).rows[0];
@@ -161,10 +162,11 @@ export function createIdentityService({ database, secret, mail, clock = () => Da
         if (action === 'login') {
           const user = (await c.query('SELECT * FROM platform.accounts WHERE email=$1 FOR UPDATE', [input.email])).rows[0];
           const correct = await verifyPassword(input.password, user?.password_hash);
-          if (!correct || !user || user.status !== 'active' || !await factor(c, user, input.code, input.recovery)) {
+          if (!correct || !user || (user.status !== 'active' && !(localAccounts && user.status==='pending')) || !await factor(c, user, input.code, input.recovery)) {
             await audit(c, 'login_failed', user?.id ?? null, requestId, 'failure');
             return { failure: error('LOGIN_FAILED', 401, '邮箱、密码或验证信息不正确，或账号不可用') };
           }
+          if(localAccounts && user.status==='pending'){await c.query("UPDATE platform.accounts SET status='active' WHERE id=$1",[user.id]);await c.query("DELETE FROM platform.identity_tokens WHERE account_id=$1 AND purpose IN ('verify','reset')",[user.id]);user.status='active';}
           const raw = newToken();
           const setupOnly = user.roles.includes('admin') && !user.mfa_secret;
           await c.query('INSERT INTO platform.sessions (token_hash,account_id,expires_at,setup_only,last_seen,created_at) VALUES ($1,$2,$3,$4,$5,$5)',
@@ -250,9 +252,9 @@ export function createIdentityService({ database, secret, mail, clock = () => Da
           await c.query("UPDATE platform.accounts SET status='deleting',deletion_due=$2 WHERE id=$1", [user.id, due]);
           await c.query('DELETE FROM platform.sessions WHERE account_id=$1', [user.id]);
           await c.query('DELETE FROM platform.identity_tokens WHERE account_id=$1', [user.id]);
-          outbound.push({ to: user.email, purpose: 'cancel', token: await token(c, user, 'cancel', 7 * 86400000) });
+          if(!localAccounts) outbound.push({ to: user.email, purpose: 'cancel', token: await token(c, user, 'cancel', 7 * 86400000) });
           await audit(c, 'deletion_requested', user.id, requestId);
-          return { clearSession: true, deletionDue: due, message: '已进入 7 天注销等待期，可通过邮件取消。' };
+          return { clearSession: true, deletionDue: due, message: localAccounts?'已进入7天注销等待期，可使用本机管理工具取消。':'已进入 7 天注销等待期，可通过邮件取消。' };
         }
         fail('NOT_FOUND', 404);
       });
