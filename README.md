@@ -13,7 +13,7 @@
 
 双击根目录 `start-local.cmd`。入口会启动 `data/postgres/` 固定主库（默认端口 55440）、ClamAV、网站与隔离试玩；不会自动覆盖旧库或创建账号。作品保存在 `data/submissions/`。
 
-首次获取源码：准备 Node.js 24+、PowerShell 7、PostgreSQL 工具、ClamAV 和病毒库，执行 `npm ci --ignore-scripts`、`npm run local:init` 后再启动。本机已有新主库时不要重新初始化。
+首次获取源码：准备 Node.js 24+、PowerShell 5.1 或 7、PostgreSQL 工具、ClamAV 和病毒库，执行 `npm ci --ignore-scripts`、`npm run local:init` 后再启动。本机已有新主库时不要重新初始化。
 
 启动后访问 http://127.0.0.1:4320/discover 。Ctrl+C 关闭网站和本次启动的扫描器，数据库保持运行；停止数据库使用 `npm run local:stop`。旧版本的 `-State`、`-DatabasePort` 参数不再用于新入口。
 

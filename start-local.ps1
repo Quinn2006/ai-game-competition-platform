@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 5.1
 [CmdletBinding()]
 param([switch]$CheckOnly)
 $ErrorActionPreference='Stop'
@@ -23,9 +23,9 @@ function Assert-FreePort([string]$Address,[int]$Port){
 Push-Location $project
 try {
     if(-not(Get-Command node -ErrorAction SilentlyContinue)){throw '未找到 Node.js。'}
-    $major=& node -p 'process.versions.node.split(".")[0]'
+    $major='console.log(process.versions.node.split(".")[0])' | & node --input-type=module
     if($LASTEXITCODE -ne 0 -or [int]$major -lt 24){throw '需要 Node.js 24 或更新版本。'}
-    & node --input-type=module -e 'await import("pg"); await import("qrcode");'
+    'await import("pg"); await import("qrcode");' | & node --input-type=module
     if($LASTEXITCODE -ne 0){throw '依赖缺失，请先执行 npm ci --ignore-scripts。'}
     foreach($path in @('.env','data\credentials.json','data\postgres\PG_VERSION','backend\src\server.mjs')){
         if(-not(Test-Path -LiteralPath (Join-Path $project $path))){throw "缺少 $path；不会自动初始化或覆盖数据库。"}
