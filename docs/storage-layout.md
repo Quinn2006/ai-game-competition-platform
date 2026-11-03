@@ -33,6 +33,8 @@ README.md、HANDOFF.md、项目计划书  保留
 
 启动入口优先使用 PowerShell 7；未安装时自动使用 Windows PowerShell 5.1。`start-local.ps1` 保持 UTF-8 BOM 编码，以便 Windows PowerShell 正确读取中文。
 
+正常启动后等待网站就绪，自动在默认浏览器打开发现页；`-CheckOnly` 不打开浏览器。等待最多 60 秒，超时可使用终端显示的网址手动访问。
+
 日常可直接双击项目根目录的 `start-local.cmd`：检查依赖和端口、启动 data/postgres 新主库、检查迁移、复用或启动 ClamAV，最后启动网站。不会自动重建数据库或初始化旧内置账号。Ctrl+C 停止网站及本次启动的扫描器，新主库保持运行。`start-local.cmd -CheckOnly` 只检查，不启动服务。
 
 已实测一键启动、扫描器 PONG、就绪检查和 discover/account/studio 返回 200。旧工作树中的 start-local.cmd 已删除，备份为 `tmp/phase-6-main-merge/start-local.cmd.20261103-082837.bak`；如需恢复，复制备份回原文件名。旧 start-local.ps1 和数据库未修改。

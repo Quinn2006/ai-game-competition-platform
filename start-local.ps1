@@ -5,6 +5,7 @@ $ErrorActionPreference='Stop'
 $project=$PSScriptRoot
 $previous=@{}
 $scanner=$null
+$browserJob=$null
 $result=0
 function Test-Scanner {
     $client=[Net.Sockets.TcpClient]::new()
@@ -60,11 +61,28 @@ try {
         Write-Host '账号：http://127.0.0.1:4320/account'
         Write-Host ("主库："+(Join-Path $project 'data\postgres')+"；端口："+$url.Port)
         Write-Host '按 Ctrl+C 停止网站及本次启动的扫描器。数据库保持运行；停止数据库使用 npm run local:stop。'
+        $browserJob=Start-Job -ScriptBlock {
+            $deadline=(Get-Date).AddSeconds(60)
+            while((Get-Date) -lt $deadline){
+                $ready=$false
+                try {
+                    $response=Invoke-WebRequest -Uri 'http://127.0.0.1:4320/health/ready' -UseBasicParsing -TimeoutSec 2
+                    $ready=$response.StatusCode -eq 200
+                } catch {}
+                if($ready){
+                    try { Start-Process 'http://127.0.0.1:4320/discover' }
+                    catch { Write-Warning 'Open http://127.0.0.1:4320/discover manually.' }
+                    return
+                }
+                Start-Sleep -Milliseconds 500
+            }
+        }
         & node --env-file=.env backend\src\server.mjs
         if($LASTEXITCODE -ne 0){throw '网站进程已退出；如果刚按 Ctrl+C，这是手动停止。'}
     }
 } catch {Write-Host ('启动未完成：'+$_.Exception.Message) -ForegroundColor Red;$result=1}
 finally {
+    if($browserJob){Stop-Job $browserJob; Receive-Job $browserJob; Remove-Job $browserJob}
     if($scanner -and -not $scanner.HasExited){$scanner.Kill();$scanner.WaitForExit()}
     foreach($name in $previous.Keys){[Environment]::SetEnvironmentVariable($name,$previous[$name])}
     Pop-Location
