@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:net';
 import { once } from 'node:events';
-import { inspectZip } from '../src/modules/uploads/zip.mjs';
-import { createScanner } from '../src/modules/uploads/scanner.mjs';
-import { networkOrigins } from '../src/modules/uploads/service.mjs';
+import { inspectZip } from '../backend/src/modules/uploads/zip.mjs';
+import { createScanner } from '../backend/src/modules/uploads/scanner.mjs';
+import { networkOrigins } from '../backend/src/modules/uploads/service.mjs';
 import { zipFixture } from './zip-fixture.mjs';
 
 test('ZIP stored/deflate, binary resources, root entry and findings',async()=>{

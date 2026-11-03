@@ -27,6 +27,6 @@ try{
     Write-Output 'Account page: http://127.0.0.1:4320/account'
     if($Games){Write-Output 'Game studio: http://127.0.0.1:4320/studio (real ClamAV required for review approval)'}
     Write-Output 'Local accounts: registration is immediate; email is only a username. Notifications stay on site.'
-    node src\server.mjs
+    node backend\src\server.mjs
   }finally{Pop-Location}
 }finally{foreach($name in $previous.Keys){[Environment]::SetEnvironmentVariable($name,$previous[$name])}}

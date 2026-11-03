@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {createOperationsService} from '../../src/modules/operations/service.mjs';
-import {createIdentityService} from '../../src/modules/identity/service.mjs';
-import {newToken,digest,hashPassword,seal,totp} from '../../src/modules/identity/crypto.mjs';
-import {createApp} from '../../src/app.mjs';
+import {createOperationsService} from '../../backend/src/modules/operations/service.mjs';
+import {createIdentityService} from '../../backend/src/modules/identity/service.mjs';
+import {newToken,digest,hashPassword,seal,totp} from '../../backend/src/modules/identity/crypto.mjs';
+import {createApp} from '../../backend/src/app.mjs';
 import {once} from 'node:events';
 export async function operationsCases(db){
  let now=Date.now();const secret='operations-integration-secret-32',password='Synthetic operations password 123',mfa=Buffer.alloc(20,7),adminId=randomUUID(),userId=randomUUID(),otherId=randomUUID(),adminToken=newToken(),userToken=newToken(),otherToken=newToken();

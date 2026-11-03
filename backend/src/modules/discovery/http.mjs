@@ -22,7 +22,7 @@ export function createDiscoveryHttp({config,discovery,clock=()=>Date.now()}) {
       const [file,type]=assets.get(path);res.setHeader('Content-Type',type+'; charset=utf-8');
       res.setHeader('Content-Security-Policy',"default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; frame-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
       res.setHeader('Referrer-Policy','no-referrer');
-      return {route:path,data:req.method==='HEAD'?'':await readFile(new URL('../../web/'+file,import.meta.url))};
+      return {route:path,data:req.method==='HEAD'?'':await readFile(new URL('../../../../frontend/'+file,import.meta.url))};
     }
     if(!discovery)fail('DISCOVERY_UNAVAILABLE',503,'作品服务尚未配置');
     if(discovery.ready&&!await discovery.ready())fail('DISCOVERY_UNAVAILABLE',503,'作品服务尚未准备就绪');

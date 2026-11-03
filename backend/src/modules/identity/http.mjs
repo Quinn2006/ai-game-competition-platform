@@ -36,7 +36,7 @@ export function createIdentityHttp({ config, identity, mailbox }) {
       res.setHeader('Content-Type', `${asset[1]}; charset=utf-8`);
       res.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
       res.setHeader('Referrer-Policy', 'no-referrer');
-      return { route: path, data: req.method === 'HEAD' ? '' : await readFile(new URL(`../../web/${asset[0]}`, import.meta.url)) };
+      return { route: path, data: req.method === 'HEAD' ? '' : await readFile(new URL(`../../../../frontend/${asset[0]}`, import.meta.url)) };
     }
     if (path === '/dev/mail') {
       if (config.environment !== 'development' || !mailbox || !['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket.remoteAddress)) throw new AppError('NOT_FOUND', 404, '接口不存在');

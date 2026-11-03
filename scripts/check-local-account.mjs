@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
-import {loadConfig} from '../src/config.mjs';
-import {createDatabase} from '../src/platform/database.mjs';
-import {migrate} from '../src/platform/migrations.mjs';
-import {createIdentityService} from '../src/modules/identity/service.mjs';
-import {verifyPassword} from '../src/modules/identity/crypto.mjs';
+import {loadConfig} from '../backend/src/config.mjs';
+import {createDatabase} from '../backend/src/platform/database.mjs';
+import {migrate} from '../backend/src/platform/migrations.mjs';
+import {createIdentityService} from '../backend/src/modules/identity/service.mjs';
+import {verifyPassword} from '../backend/src/modules/identity/crypto.mjs';
 const config=loadConfig();assert.equal(config.environment,'development');assert.equal(new URL(config.databaseUrl).hostname,'127.0.0.1');
 const db=createDatabase(config,()=>{});
 try{

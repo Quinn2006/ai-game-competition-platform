@@ -2,7 +2,7 @@ import { readdir } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 
 let count = 0;
-for (const root of ['src', 'scripts', 'tests', 'prototypes']) {
+for (const root of ['backend', 'frontend', 'scripts', 'tests', 'prototypes']) {
   const entries = await readdir(root, { recursive: true });
   for (const entry of entries.filter(name => name.endsWith('.mjs'))) {
     const result = spawnSync(process.execPath, ['--check', `${root}/${entry}`], { encoding: 'utf8' });

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {createIdentityService} from '../../src/modules/identity/service.mjs';
-import {createOperationsService} from '../../src/modules/operations/service.mjs';
+import {createIdentityService} from '../../backend/src/modules/identity/service.mjs';
+import {createOperationsService} from '../../backend/src/modules/operations/service.mjs';
 export async function localIdentityCases(db){
  const email='local-'+randomUUID()+'@example.test',password='本机密码 local safe password 123';let sent=0;
  const service=createIdentityService({database:db,secret:'local-identity-test-key',localAccounts:true,mail:async()=>{sent++;throw Error('No email allowed');}});

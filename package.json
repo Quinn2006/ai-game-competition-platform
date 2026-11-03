@@ -8,8 +8,8 @@
   },
   "scripts": {
     "test:scanner": "node --env-file-if-exists=.env.test --test tests/integration/real-scanner.test.mjs",
-    "start": "node --env-file-if-exists=.env src/server.mjs",
-    "dev": "node --watch --env-file-if-exists=.env src/server.mjs",
+    "start": "node --env-file-if-exists=.env backend/src/server.mjs",
+    "dev": "node --watch --env-file-if-exists=.env backend/src/server.mjs",
     "check": "node scripts/check-source.mjs",
     "db:migrate": "node --env-file-if-exists=.env scripts/migrate.mjs up",
     "db:status": "node --env-file-if-exists=.env scripts/migrate.mjs status",
@@ -17,7 +17,13 @@
     "test:postgres": "node --env-file-if-exists=.env.test --test tests/integration/postgres.test.mjs",
     "test": "node --test tests/*.test.mjs",
     "prototype": "node prototypes/server.mjs",
-    "check:baseline": "node scripts/check-baseline.mjs"
+    "check:baseline": "node scripts/check-baseline.mjs",
+    "local:init": "node scripts/local-runtime.mjs init",
+    "local:start": "node scripts/local-runtime.mjs start",
+    "local:stop": "node scripts/local-runtime.mjs stop",
+    "local:backup": "node scripts/local-runtime.mjs backup",
+    "local:restore": "node scripts/local-runtime.mjs restore",
+    "import:collection": "node --env-file=.env scripts/import-collection.mjs"
   },
   "dependencies": {
     "pg": "8.23.1",

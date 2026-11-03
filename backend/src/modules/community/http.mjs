@@ -17,7 +17,7 @@ export function createCommunityHttp({config,community}){
       if(!['GET','HEAD'].includes(req.method))fail('METHOD_NOT_ALLOWED',405);
       const [file,type]=assets[path];res.setHeader('Content-Type',type+'; charset=utf-8');
       res.setHeader('Content-Security-Policy',"default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'");
-      return {route:path,data:req.method==='HEAD'?'':await readFile(new URL('../../web/'+file,import.meta.url))};
+      return {route:path,data:req.method==='HEAD'?'':await readFile(new URL('../../../../frontend/'+file,import.meta.url))};
     }
     if(!community)fail('COMMUNITY_UNAVAILABLE',503);
     const action=path.slice('/api/community/'.length);if(!actions.has(action))fail('NOT_FOUND',404);

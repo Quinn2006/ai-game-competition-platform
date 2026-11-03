@@ -1,3 +1,6 @@
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+const projectRoot = fileURLToPath(new URL('../../', import.meta.url));
 const environments = new Set(['development', 'test', 'production']);
 
 function fail(field) {
@@ -59,5 +62,5 @@ export function loadConfig(env = process.env) {
   if (sessionSecret && Buffer.byteLength(sessionSecret) < 32) fail('SESSION_SECRET');
   if (production && (!databaseUrl || !endpoint || !sessionSecret || !env.MAIN_ORIGIN || !env.GAME_ORIGIN)) fail('production dependencies');
   return Object.freeze({ environment, port, host, mainOrigin, gameOrigin,
-    databaseUrl, databaseTls, storage: Object.freeze({ endpoint, bucket }), sessionSecret, localMailPreview,localGames,uploadLimits,scannerPort,gameLoadTimeout,submissionDeadline });
+    databaseUrl, databaseTls, storage: Object.freeze({ endpoint, bucket }), submissionsRoot:resolve(projectRoot,env.SUBMISSIONS_ROOT || 'data/submissions'), exportsRoot:resolve(projectRoot,env.EXPORTS_ROOT || 'data/exports'), sessionSecret, localMailPreview,localGames,uploadLimits,scannerPort,gameLoadTimeout,submissionDeadline });
 }

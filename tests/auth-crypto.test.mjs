@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { hashPassword, verifyPassword, newToken, digest, validToken, totp, verifyTotp, seal, unseal, base32 } from '../src/modules/identity/crypto.mjs';
+import { hashPassword, verifyPassword, newToken, digest, validToken, totp, verifyTotp, seal, unseal, base32 } from '../backend/src/modules/identity/crypto.mjs';
 
 test('password hash salts, verifies unicode without truncation and rejects malformed encodings', async () => {
   const password = '安全测试 pass phrase 123';

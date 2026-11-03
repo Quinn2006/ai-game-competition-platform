@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
-import {createDatabase} from '../src/platform/database.mjs';
-import {loadConfig} from '../src/config.mjs';
-import {hashPassword} from '../src/modules/identity/crypto.mjs';
+import {createDatabase} from '../backend/src/platform/database.mjs';
+import {loadConfig} from '../backend/src/config.mjs';
+import {hashPassword} from '../backend/src/modules/identity/crypto.mjs';
 const config=loadConfig(),url=new URL(config.databaseUrl);
 if(config.environment!=='development'||!['127.0.0.1','localhost','::1','[::1]'].includes(url.hostname))throw Error('Local development database required');
 let raw='';for await(const chunk of process.stdin){raw+=chunk;if(raw.length>4096)throw Error('Input too large');}

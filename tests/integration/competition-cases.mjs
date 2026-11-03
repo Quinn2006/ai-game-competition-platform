@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {createCompetitionService} from '../../src/modules/competition/service.mjs';
-import {createIdentityService} from '../../src/modules/identity/service.mjs';
-import {newToken,digest} from '../../src/modules/identity/crypto.mjs';
+import {createCompetitionService} from '../../backend/src/modules/competition/service.mjs';
+import {createIdentityService} from '../../backend/src/modules/identity/service.mjs';
+import {newToken,digest} from '../../backend/src/modules/identity/crypto.mjs';
 export async function competitionCases(db,onEvent){
  let now=Date.now();const start=now;
  const identity=createIdentityService({database:db,secret:'phase6-test-secret',clock:()=>now,mail:async()=>{}});

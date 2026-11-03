@@ -13,7 +13,7 @@ export function createCompetitionHttp({config,competition}){
    if(!['GET','HEAD'].includes(req.method))fail('METHOD_NOT_ALLOWED',405);
    const [file,type]=assets[path];res.setHeader('Content-Type',type+'; charset=utf-8');
    res.setHeader('Content-Security-Policy',`default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-src ${config.gameOrigin??"'none'"}; base-uri 'none'; frame-ancestors 'none'`);
-   return {route:path,data:req.method==='HEAD'?'':await readFile(new URL('../../web/'+file,import.meta.url))};
+   return {route:path,data:req.method==='HEAD'?'':await readFile(new URL('../../../../frontend/'+file,import.meta.url))};
   }
   if(!competition)fail('COMPETITION_UNAVAILABLE',503);
   const action=path.slice('/api/competition/'.length),publicRead=['list','results','global','awards'].includes(action);

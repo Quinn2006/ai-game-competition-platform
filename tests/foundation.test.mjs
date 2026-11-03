@@ -2,13 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
-import { loadConfig } from '../src/config.mjs';
-import { createLogger } from '../src/platform/logger.mjs';
-import { publicError } from '../src/platform/errors.mjs';
-import { createPrivateStorage } from '../src/platform/storage.mjs';
-import { createApp } from '../src/app.mjs';
-import { appendAudit } from '../src/modules/audit/repository.mjs';
-import { migrate, migrationFiles } from '../src/platform/migrations.mjs';
+import { loadConfig } from '../backend/src/config.mjs';
+import { createLogger } from '../backend/src/platform/logger.mjs';
+import { publicError } from '../backend/src/platform/errors.mjs';
+import { createPrivateStorage } from '../backend/src/platform/storage.mjs';
+import { createApp } from '../backend/src/app.mjs';
+import { appendAudit } from '../backend/src/modules/audit/repository.mjs';
+import { migrate, migrationFiles } from '../backend/src/platform/migrations.mjs';
 
 test('development runs without fabricated credentials; configuration rejects unsafe boundaries', () => {
   const config = loadConfig({});

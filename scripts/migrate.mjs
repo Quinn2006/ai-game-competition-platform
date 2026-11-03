@@ -1,7 +1,7 @@
-import { loadConfig } from '../src/config.mjs';
-import { createLogger } from '../src/platform/logger.mjs';
-import { createDatabase } from '../src/platform/database.mjs';
-import { migrate } from '../src/platform/migrations.mjs';
+import { loadConfig } from '../backend/src/config.mjs';
+import { createLogger } from '../backend/src/platform/logger.mjs';
+import { createDatabase } from '../backend/src/platform/database.mjs';
+import { migrate } from '../backend/src/platform/migrations.mjs';
 
 const log = createLogger();
 let database;

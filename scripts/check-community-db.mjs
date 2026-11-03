@@ -1,5 +1,5 @@
 import pg from 'pg';
-import {migrate,migrationFiles} from '../src/platform/migrations.mjs';
+import {migrate,migrationFiles} from '../backend/src/platform/migrations.mjs';
 import {communityCases} from '../tests/integration/community-cases.mjs';
 const url=new URL(process.env.DATABASE_URL);if(url.hostname!=='127.0.0.1'||url.pathname!=='/ai_games_test'||process.env.CONFIRM_DISPOSABLE_DATABASE!=='ai_games_test')throw Error('Dedicated test database required');
 const db=new pg.Pool({connectionString:url.href});try{

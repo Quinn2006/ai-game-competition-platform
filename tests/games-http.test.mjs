@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { request } from 'node:http';
 import { createHash,randomUUID } from 'node:crypto';
-import { createApp } from '../src/app.mjs';
-import { createGameHttp } from '../src/modules/uploads/http.mjs';
-import { AppError } from '../src/platform/errors.mjs';
-import { createLocalStorage } from '../src/platform/local-storage.mjs';
+import { createApp } from '../backend/src/app.mjs';
+import { createGameHttp } from '../backend/src/modules/uploads/http.mjs';
+import { AppError } from '../backend/src/platform/errors.mjs';
+import { createLocalStorage } from '../backend/src/platform/local-storage.mjs';
 import { zipFixture } from './zip-fixture.mjs';
 test('game HTTP enforces capabilities, Host, CSRF, published version checks, CSP, MIME, QR and integrity',async t=>{
   const bytes=zipFixture([['index.html','<h1>Fixture</h1>'],['game.js','console.log(1)']]);

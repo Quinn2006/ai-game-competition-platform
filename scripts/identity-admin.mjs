@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { loadConfig } from '../src/config.mjs';
-import { createDatabase } from '../src/platform/database.mjs';
+import { loadConfig } from '../backend/src/config.mjs';
+import { createDatabase } from '../backend/src/platform/database.mjs';
 
 // Local bootstrap only. No default password, no password creation,
 // and no production mutation. The account must already be active.

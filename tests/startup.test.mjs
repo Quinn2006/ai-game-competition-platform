@@ -12,7 +12,7 @@ test('real server entry starts with absent dependencies and fails closed on inva
   await new Promise(resolve => probe.close(resolve));
   // Child receives no developer secrets or ambient database settings.
   const env = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, APP_ENV: 'development', PORT: String(port) };
-  const child = spawn(process.execPath, ['--env-file-if-exists=.env.startup-test-absent', 'src/server.mjs'], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(process.execPath, ['--env-file-if-exists=.env.startup-test-absent', 'backend/src/server.mjs'], { env, stdio: ['ignore', 'pipe', 'pipe'] });
   let output = '';
   t.after(async () => {
     if (child.exitCode === null && child.signalCode === null) {
@@ -33,7 +33,7 @@ test('real server entry starts with absent dependencies and fails closed on inva
   assert.equal(live.status, 200);
   assert.equal((await live.json()).status, 'alive');
   assert.equal((await fetch(`http://127.0.0.1:${port}/health/ready`)).status, 503);
-  const invalid = spawn(process.execPath, ['src/server.mjs'], { env: { ...env, PORT: 'invalid' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const invalid = spawn(process.execPath, ['backend/src/server.mjs'], { env: { ...env, PORT: 'invalid' }, stdio: ['ignore', 'pipe', 'pipe'] });
   let invalidOutput = '';
   invalid.stdout.on('data', chunk => { invalidOutput += chunk; });
   const [exitCode] = await once(invalid, 'close');

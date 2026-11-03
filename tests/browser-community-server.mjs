@@ -1,13 +1,13 @@
-import {createGameHttp} from '../src/modules/uploads/http.mjs';
+import {createGameHttp} from '../backend/src/modules/uploads/http.mjs';
 import {zipFixture} from './zip-fixture.mjs';
 import {createHash} from 'node:crypto';
 // Explicit synthetic browser fixture; never imported by the application entry.
 import pg from 'pg';
-import {createApp} from '../src/app.mjs';
-import {createCommunityService} from '../src/modules/community/service.mjs';
-import {createDiscoveryService} from '../src/modules/discovery/service.mjs';
-import {createIdentityService} from '../src/modules/identity/service.mjs';
-import {newToken,digest} from '../src/modules/identity/crypto.mjs';
+import {createApp} from '../backend/src/app.mjs';
+import {createCommunityService} from '../backend/src/modules/community/service.mjs';
+import {createDiscoveryService} from '../backend/src/modules/discovery/service.mjs';
+import {createIdentityService} from '../backend/src/modules/identity/service.mjs';
+import {newToken,digest} from '../backend/src/modules/identity/crypto.mjs';
 import {randomUUID} from 'node:crypto';
 const url=new URL(process.env.DATABASE_URL);if(url.hostname!=='127.0.0.1'||url.pathname!=='/ai_games_test')throw Error('Test DB only');
 const database=new pg.Pool({connectionString:url.href}),id=randomUUID(),token=newToken();

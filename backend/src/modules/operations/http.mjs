@@ -1,4 +1,6 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdir, writeFile, lstat } from 'node:fs/promises';
+import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { fail } from './policy.mjs';
 const assets=new Map(['/admin','/notifications','/announcements','/help','/feedback','/support','/status'].map(p=>[p,['operations.html','text/html']]));
 assets.set('/operations/lifecycle.mjs',['support-lifecycle.mjs','text/javascript']);
@@ -12,7 +14,7 @@ export function createOperationsHttp({config,operations}){return async(req,res,r
  if(assets.has(path)){
   if(!['GET','HEAD'].includes(req.method))fail('METHOD_NOT_ALLOWED',405);
   const [file,type]=assets.get(path);res.setHeader('Content-Type',type+'; charset=utf-8');res.setHeader('Content-Security-Policy',"default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
-  return {route:path,data:req.method==='HEAD'?'':await readFile(new URL('../../web/'+file,import.meta.url))};
+  return {route:path,data:req.method==='HEAD'?'':await readFile(new URL('../../../../frontend/'+file,import.meta.url))};
  }
  const action=path.slice('/api/operations/'.length);if(!reads.has(action)&&!writes.has(action))fail('NOT_FOUND',404);
  if(req.method!==(reads.has(action)?'GET':'POST'))fail('METHOD_NOT_ALLOWED',405);
@@ -26,5 +28,11 @@ export function createOperationsHttp({config,operations}){return async(req,res,r
   const chunks=[];let size=0;for await(const part of req){size+=part.length;if(size>800000)fail('BODY_TOO_LARGE',413);chunks.push(part);}
   try{input=JSON.parse(Buffer.concat(chunks));if(!input||typeof input!=='object'||Array.isArray(input))throw Error();}catch{fail('INVALID_JSON');}
  }
- return {route:path,data:JSON.stringify(await operations.run(action,input,context))};
+ const result=await operations.run(action,input,context);
+ if(action==='export' && config.exportsRoot){
+  await mkdir(config.exportsRoot,{recursive:true,mode:0o700});
+  if((await lstat(config.exportsRoot)).isSymbolicLink())throw Error('Export root must not be a link');
+  await writeFile(join(config.exportsRoot,`${randomUUID()}.${input.format==='csv'?'csv':'xml'}`),result.content,{flag:'wx',mode:0o600});
+ }
+ return {route:path,data:JSON.stringify(result)};
 };}

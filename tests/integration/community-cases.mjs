@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {createCommunityService,deletionParticipant} from '../../src/modules/community/service.mjs';
-import {createIdentityService} from '../../src/modules/identity/service.mjs';
-import {newToken,digest} from '../../src/modules/identity/crypto.mjs';
+import {createCommunityService,deletionParticipant} from '../../backend/src/modules/community/service.mjs';
+import {createIdentityService} from '../../backend/src/modules/identity/service.mjs';
+import {newToken,digest} from '../../backend/src/modules/identity/crypto.mjs';
 export async function communityCases(db){
  let now=Date.now();const identity=createIdentityService({database:db,secret:'test-community-identity-secret',mail:async()=>{},clock:()=>now});
  async function actor(admin=false){const id=randomUUID(),token=newToken();await db.query("INSERT INTO platform.accounts(id,status,nickname,roles,mfa_secret) VALUES($1,'active','测试玩家',$2,$3)",[id,admin?['admin']:[],admin?'test-factor':null]);await db.query("INSERT INTO platform.sessions(token_hash,account_id,expires_at,last_seen) VALUES($1,$2,$3,$4)",[digest(token),id,new Date(now+86400000),new Date(now)]);return {id,sessionToken:token,visitor:randomUUID(),requestId:randomUUID()};}

@@ -15,3 +15,7 @@ secrets.yaml
 node_modules/
 dist/
 build/
+
+# Private runtime data and local configuration
+/data/
+!/.env.example

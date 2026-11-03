@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {createOperationsService} from '../../src/modules/operations/service.mjs';
-import {createIdentityService} from '../../src/modules/identity/service.mjs';
-import {newToken,digest} from '../../src/modules/identity/crypto.mjs';
-import {competitionNotifier} from '../../src/modules/operations/competition-events.mjs';
+import {createOperationsService} from '../../backend/src/modules/operations/service.mjs';
+import {createIdentityService} from '../../backend/src/modules/identity/service.mjs';
+import {newToken,digest} from '../../backend/src/modules/identity/crypto.mjs';
+import {competitionNotifier} from '../../backend/src/modules/operations/competition-events.mjs';
 import {competitionCases} from './competition-cases.mjs';
 export async function supportLifecycleCases(db){
  const identity=createIdentityService({database:db,secret:'local-support-test-secret',mail:async()=>{}});

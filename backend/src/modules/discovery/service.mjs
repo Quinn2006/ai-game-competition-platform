@@ -1,4 +1,5 @@
 import { AppError } from '../../platform/errors.mjs';
+import { createHash, randomUUID } from 'node:crypto';
 
 export const categories = ['动作','射击','益智','冒险','体育','休闲','模拟经营','其他'];
 export const sorts = { duration:'(m.duration_ms::numeric / NULLIF(m.plays,0)) DESC NULLS LAST', latest:'COALESCE(pub.published_at,v.created_at) DESC', likes:'m.likes DESC NULLS LAST', plays:'m.plays DESC NULLS LAST', popularity:'m.popularity DESC NULLS LAST' };
@@ -36,7 +37,7 @@ export function publicWork(r) {
 }
 export const deletionParticipant={async check(){},async finalize(c,id){if((await c.query("SELECT to_regclass('platform.search_history') AS name")).rows[0].name)await c.query('DELETE FROM platform.search_history WHERE account_id=$1',[id]);}};
 
-export function createDiscoveryService({database,identity}) {
+export function createDiscoveryService({database,identity,storage}) {
   const query=(sql,args)=>database.query(sql,args);
   async function transaction(fn) {const c=await database.connect();try{await c.query('BEGIN');const r=await fn(c);await c.query('COMMIT');return r;}catch(e){await c.query('ROLLBACK');throw e;}finally{c.release();}}
   async function user(context) {
@@ -96,6 +97,14 @@ export function createDiscoveryService({database,identity}) {
       await transaction(async c=>{
         const w=(await c.query('SELECT owner_id FROM platform.works WHERE id=$1 FOR UPDATE',[input.workId])).rows[0];
         if(!w)fail('NOT_FOUND',404);if(w.owner_id!==u.id)fail('FORBIDDEN',403);
+        if(storage){
+          const files=[];
+          for(const [kind,bytes] of [['summary',Buffer.from(input.summary)],...(p.cover?[['cover',Buffer.from(p.cover.split(',')[1],'base64')]]:[])]){
+            const sha256=createHash('sha256').update(bytes).digest('hex'),key=`${input.workId}-${kind}-${sha256}`;
+            await storage.put('review',key,bytes);files.push({kind,key,area:'review',sha256});
+          }
+          await c.query("INSERT INTO platform.upload_events(id,work_id,actor_id,action,detail) VALUES($1,$2,$3,'profile_files',$4)",[randomUUID(),input.workId,u.id,{files}]);
+        }
         await c.query(`INSERT INTO platform.work_profiles(work_id,title,summary,instructions,category,tags,cover) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(work_id) DO UPDATE SET title=$2,summary=$3,instructions=$4,category=$5,tags=$6,cover=$7`,[input.workId,p.title,p.summary,p.instructions,p.category,p.tags,p.cover]);
         await c.query("INSERT INTO platform.discovery_events(actor_id,action,work_id) VALUES($1,'profile_updated',$2)",[u.id,input.workId]);
       });return {ok:true};

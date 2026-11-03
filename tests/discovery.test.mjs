@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {once} from 'node:events';
 import {get as httpGet} from 'node:http';
-import {createApp} from '../src/app.mjs';
-import {categories,profileOf,termOf,publicWork,createDiscoveryService} from '../src/modules/discovery/service.mjs';
-import {recent,readHistory,saveHistory} from '../src/web/search-history.mjs';
+import {createApp} from '../backend/src/app.mjs';
+import {categories,profileOf,termOf,publicWork,createDiscoveryService} from '../backend/src/modules/discovery/service.mjs';
+import {recent,readHistory,saveHistory} from '../frontend/search-history.mjs';
 test('discovery: editorial unicode bounds, raster-only covers and search normalization',()=>{
   const p={title:'名字',summary:'简介',instructions:'说明',category:categories[0],tags:['a']};
   assert.equal(profileOf({...p,title:'😀'.repeat(100)}).title.length,200);

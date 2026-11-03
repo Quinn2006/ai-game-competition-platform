@@ -1,10 +1,10 @@
 // Synthetic component fixture only. Not a scanner bypass or application startup path.
-import { createApp } from '../src/app.mjs';
-import { createGameHttp } from '../src/modules/uploads/http.mjs';
-import { loadConfig } from '../src/config.mjs';
+import { createApp } from '../backend/src/app.mjs';
+import { createGameHttp } from '../backend/src/modules/uploads/http.mjs';
+import { loadConfig } from '../backend/src/config.mjs';
 import { zipFixture } from './zip-fixture.mjs';
 import { createHash } from 'node:crypto';
-import { AppError } from '../src/platform/errors.mjs';
+import { AppError } from '../backend/src/platform/errors.mjs';
 let scenario='normal';
 const config=loadConfig({MAIN_ORIGIN:'http://127.0.0.1:4330',GAME_ORIGIN:'http://127.0.0.2:4331',PORT:'4330'});
 const ids=['11111111-1111-4111-8111-111111111111','22222222-2222-4222-8222-222222222222'];

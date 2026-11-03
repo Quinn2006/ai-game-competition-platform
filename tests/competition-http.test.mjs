@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {once} from 'node:events';
 import {request} from 'node:http';
-import {createApp} from '../src/app.mjs';
+import {createApp} from '../backend/src/app.mjs';
 test('competition HTTP: public projection, method/Host/origin/size checks and session cookie ambiguity',async()=>{
  const seen=[],competition={publicList:async()=>({items:[]}),publicResults:async()=>({result:null}),run:async(a,i,c)=>{seen.push({a,i,c});return {ok:true};}};
  const config={mainOrigin:'http://127.0.0.1',environment:'test'},app=createApp({config,competition,log:()=>{}});app.listen(0,'127.0.0.1');await once(app,'listening');config.mainOrigin='http://127.0.0.1:'+app.address().port;

@@ -34,7 +34,7 @@ export function createGameHttp({ config, uploads, storage, competition, limits=d
       if(!['GET','HEAD'].includes(req.method)) fail('METHOD_NOT_ALLOWED',405);
       res.setHeader('Content-Type',asset[1]+'; charset=utf-8');
       res.setHeader('Content-Security-Policy',`default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; frame-src ${config.gameOrigin}; base-uri 'none'; frame-ancestors ${path==='/play'&&url.searchParams.get('embed')==='1'?"'self'":"'none'"}`);
-      return {route:path,data:req.method==='HEAD'?'':await readFile(new URL('../../web/'+asset[0],import.meta.url))};
+      return {route:path,data:req.method==='HEAD'?'':await readFile(new URL('../../../../frontend/'+asset[0],import.meta.url))};
     }
     if(!uploads) fail('UPLOADS_UNAVAILABLE',503);
     const action=path.slice('/api/games/'.length);
@@ -99,7 +99,7 @@ export function createGameHttp({ config, uploads, storage, competition, limits=d
       res.setHeader('Access-Control-Allow-Origin','*');
       const path=decodeURIComponent(match[2]);
       let data;
-      if(path==='__platform_bridge.mjs') { data=await readFile(new URL('../../web/bridge.mjs',import.meta.url)); res.setHeader('Content-Type','text/javascript'); }
+      if(path==='__platform_bridge.mjs') { data=await readFile(new URL('../../../../frontend/bridge.mjs',import.meta.url)); res.setHeader('Content-Type','text/javascript'); }
       else {
         if(cached?.id!==v.id || cached.digest!==v.digest){
           const bytes=await storage.get(ticket.context?'review':'release',v.id);

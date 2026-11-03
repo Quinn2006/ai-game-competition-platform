@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {decimal,judgeScore,judgeAverage,popularity,finalScore,display,rank,serialize,compare} from '../src/modules/competition/scoring.mjs';
+import {decimal,judgeScore,judgeAverage,popularity,finalScore,display,rank,serialize,compare} from '../backend/src/modules/competition/scoring.mjs';
 test('competition exact formula, display boundaries and arbitrary integer counts',()=>{
  assert.equal(display(judgeScore([80,90,70,80,100])),'83.50');
  assert.equal(display(finalScore(decimal(85),decimal(68))),'78.20');

@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { createDatabase } from '../../src/platform/database.mjs';
-import { loadConfig } from '../../src/config.mjs';
-import { migrate } from '../../src/platform/migrations.mjs';
-import { createScanner } from '../../src/modules/uploads/scanner.mjs';
-import { createIdentityService } from '../../src/modules/identity/service.mjs';
-import { createUploadService } from '../../src/modules/uploads/service.mjs';
-import { createLocalStorage } from '../../src/platform/local-storage.mjs';
-import { totp,unseal } from '../../src/modules/identity/crypto.mjs';
+import { createDatabase } from '../../backend/src/platform/database.mjs';
+import { loadConfig } from '../../backend/src/config.mjs';
+import { migrate } from '../../backend/src/platform/migrations.mjs';
+import { createScanner } from '../../backend/src/modules/uploads/scanner.mjs';
+import { createIdentityService } from '../../backend/src/modules/identity/service.mjs';
+import { createUploadService } from '../../backend/src/modules/uploads/service.mjs';
+import { createLocalStorage } from '../../backend/src/platform/local-storage.mjs';
+import { totp,unseal } from '../../backend/src/modules/identity/crypto.mjs';
 import { zipFixture } from '../zip-fixture.mjs';
 
 test('real ClamAV + PostgreSQL: clean/EICAR, authenticated review, real MFA rollback and revoke',async()=>{

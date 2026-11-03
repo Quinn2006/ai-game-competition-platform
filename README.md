@@ -1,3 +1,5 @@
+2026-11-03：已整理为 frontend、backend、database、data。新主库独立初始化在 data/postgres，旧库未迁入。当前启动、坚果云材料导入、备份恢复与目录标准以 [本地运行手册](docs/storage-layout.md) 为准；下文保留历史阶段记录。
+
 2026-11-02 最新决定与联合验收以 [阶段6/7合并及本地账号说明](docs/phase-7/integration.md) 为准：注册无需邮箱验证，全部通知仅站内；取消真实邮件验收；本地AI隐私流程已测，真实AI供应商仍未配置。
 
 阶段7本地运营后台、通知公告、反馈与服务接口已实现；真实邮件/AI和阶段6联调待验收。见[开发说明](docs/phase-7/development.md)与[验证记录](docs/phase-7/verification.md)。

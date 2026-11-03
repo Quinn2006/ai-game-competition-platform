@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { allowed } from '../src/modules/identity/authorization.mjs';
-import { publicProfile, publicTeam, selfProfile } from '../src/modules/identity/profiles.mjs';
-import { createAccessGuard } from '../src/modules/identity/access.mjs';
-import { appendSecurityAudit } from '../src/modules/audit/security.mjs';
+import { allowed } from '../backend/src/modules/identity/authorization.mjs';
+import { publicProfile, publicTeam, selfProfile } from '../backend/src/modules/identity/profiles.mjs';
+import { createAccessGuard } from '../backend/src/modules/identity/access.mjs';
+import { appendSecurityAudit } from '../backend/src/modules/audit/security.mjs';
 
 const actor = (roles = []) => ({ id: randomUUID(), status: 'active', roles });
 

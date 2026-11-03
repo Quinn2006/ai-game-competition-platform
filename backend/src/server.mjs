@@ -22,12 +22,12 @@ try {
   const mailbox = undefined;
   const identity = database && config.sessionSecret ? createIdentityService({ database, localAccounts:true, secret: config.sessionSecret, deletionParticipants:[deletionParticipant,discoveryDeletion,communityDeletion,competitionDeletion,operationsDeletion],
     mail: async () => { throw Error("Mail disabled for local accounts"); } }) : undefined;
-  const storage = config.localGames ? createLocalStorage('tmp/private-games',config.environment) : createPrivateStorage(config);
+  const storage = config.localGames ? createLocalStorage(config.submissionsRoot,config.environment) : createPrivateStorage(config);
   const uploads = config.localGames && identity ? createUploadService({database,identity,storage,scan:createScanner({port:config.scannerPort}),limits:config.uploadLimits,deadline:config.submissionDeadline}) : null;
   const operations = database ? createOperationsService({database,identity,contactEmail:process.env.SUPPORT_EMAIL??''}) : null;
   const competition = database && identity ? createCompetitionService({database,identity,onEvent:competitionNotifier(operations)}) : null;
   const games = createGameHttp({config,uploads,storage,competition,limits:config.uploadLimits,loadTimeout:config.gameLoadTimeout});
-  const discovery = database ? createDiscoveryService({ database, identity }) : null;
+  const discovery = database ? createDiscoveryService({ database, identity, storage:config.localGames?storage:undefined }) : null;
   const community = database && identity ? createCommunityService({database,identity,secret:config.sessionSecret}) : null;
   const app = createApp({ config, database, storage, log, identity, mailbox, games:games.main, discovery, community, operations, competition });
   if(config.localGames) {

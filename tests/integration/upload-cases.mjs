@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { createIdentityService } from '../../src/modules/identity/service.mjs';
-import { newToken,digest } from '../../src/modules/identity/crypto.mjs';
-import { createUploadService,deletionParticipant } from '../../src/modules/uploads/service.mjs';
+import { createIdentityService } from '../../backend/src/modules/identity/service.mjs';
+import { newToken,digest } from '../../backend/src/modules/identity/crypto.mjs';
+import { createUploadService,deletionParticipant } from '../../backend/src/modules/uploads/service.mjs';
 import { zipFixture } from '../zip-fixture.mjs';
-import { createLocalStorage } from '../../src/platform/local-storage.mjs';
+import { createLocalStorage } from '../../backend/src/platform/local-storage.mjs';
 
 export async function uploadCases(database){
   const storage=createLocalStorage('tmp/upload-tests/'+randomUUID(),'test');
@@ -16,6 +16,7 @@ export async function uploadCases(database){
     return {id,sessionToken:token,requestId:randomUUID()};
   }
   const owner=await actor(),other=await actor(),admin=await actor(true);let status='clean',scans=0;
+
   const service=createUploadService({database,identity,storage,scan:async()=>{scans++;return{status,engine:'test-double'};}});
   const run=(action,input,who=owner,bytes)=>service.run(action,input,who,bytes);
   const work=await run('create',{title:'Integration game'}),workId=work.id;

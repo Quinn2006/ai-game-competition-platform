@@ -1,11 +1,12 @@
+import { collectionCases } from './collection-cases.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { loadConfig } from '../../src/config.mjs';
-import { createDatabase } from '../../src/platform/database.mjs';
-import { migrate, databaseReady } from '../../src/platform/migrations.mjs';
-import { appendAudit } from '../../src/modules/audit/repository.mjs';
-import { appendSecurityAudit } from '../../src/modules/audit/security.mjs';
+import { loadConfig } from '../../backend/src/config.mjs';
+import { createDatabase } from '../../backend/src/platform/database.mjs';
+import { migrate, databaseReady } from '../../backend/src/platform/migrations.mjs';
+import { appendAudit } from '../../backend/src/modules/audit/repository.mjs';
+import { appendSecurityAudit } from '../../backend/src/modules/audit/security.mjs';
 import { identityCases } from './identity-cases.mjs';
 import { communityCases } from './community-cases.mjs';
 import { uploadCases } from './upload-cases.mjs';
@@ -98,6 +99,7 @@ test('PostgreSQL: concurrent migration, empty rollback, reapply, audit persisten
     await migrate(database, 'test', 'up');
     await operationsCases(database);
     await localIdentityCases(database);
+    await collectionCases(database);
     await database.query("UPDATE public.schema_migrations SET checksum = 'tampered' WHERE id = '001_foundation'");
     await assert.rejects(migrate(database, 'test', 'up'), /history mismatch/);
     await assert.rejects(databaseReady(database, 'test'), /history mismatch/);

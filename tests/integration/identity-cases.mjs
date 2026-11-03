@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
-import { createIdentityService } from '../../src/modules/identity/service.mjs';
-import { createApp } from '../../src/app.mjs';
-import { loadConfig } from '../../src/config.mjs';
-import { totp, unseal, digest } from '../../src/modules/identity/crypto.mjs';
-import { cleanupAudit, placeAuditHold } from '../../src/modules/audit/retention.mjs';
+import { createIdentityService } from '../../backend/src/modules/identity/service.mjs';
+import { createApp } from '../../backend/src/app.mjs';
+import { loadConfig } from '../../backend/src/config.mjs';
+import { totp, unseal, digest } from '../../backend/src/modules/identity/crypto.mjs';
+import { cleanupAudit, placeAuditHold } from '../../backend/src/modules/audit/retention.mjs';
 
 export async function identityCases(database) {
   const mailbox=[], secret='synthetic-integration-key-32-characters';

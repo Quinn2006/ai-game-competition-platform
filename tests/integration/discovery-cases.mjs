@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
-import {createDiscoveryService,deletionParticipant} from '../../src/modules/discovery/service.mjs';
+import {createDiscoveryService,deletionParticipant} from '../../backend/src/modules/discovery/service.mjs';
 
 export async function discoveryCases(db){
-  const migration=await readFile(new URL('../../migrations/006_discovery.up.sql',import.meta.url),'utf8');
-  const down=await readFile(new URL('../../migrations/006_discovery.down.sql',import.meta.url),'utf8');
+  const migration=await readFile(new URL('../../database/migrations/006_discovery.up.sql',import.meta.url),'utf8');
+  const down=await readFile(new URL('../../database/migrations/006_discovery.down.sql',import.meta.url),'utf8');
   await db.query(migration);await db.query(down);await db.query(migration);
   const owner=randomUUID(),other=randomUUID(),team=randomUUID(),ids=[];
   for(const id of [owner,other])await db.query("INSERT INTO platform.accounts(id,status,nickname,email,bio) VALUES($1,'active',$2,$3,'公开简介')",[id,id===owner?'星河作者':'其他作者',id+'@example.test']);

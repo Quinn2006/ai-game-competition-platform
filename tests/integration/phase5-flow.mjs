@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
 import pg from 'pg';
 import { randomUUID } from 'node:crypto';
-import { createApp } from '../../src/app.mjs';
-import { migrate } from '../../src/platform/migrations.mjs';
-import { createIdentityService } from '../../src/modules/identity/service.mjs';
-import { newToken, digest } from '../../src/modules/identity/crypto.mjs';
-import { createUploadService } from '../../src/modules/uploads/service.mjs';
-import { createGameHttp } from '../../src/modules/uploads/http.mjs';
-import { createDiscoveryService } from '../../src/modules/discovery/service.mjs';
-import { createCommunityService } from '../../src/modules/community/service.mjs';
+import { createApp } from '../../backend/src/app.mjs';
+import { migrate } from '../../backend/src/platform/migrations.mjs';
+import { createIdentityService } from '../../backend/src/modules/identity/service.mjs';
+import { newToken, digest } from '../../backend/src/modules/identity/crypto.mjs';
+import { createUploadService } from '../../backend/src/modules/uploads/service.mjs';
+import { createGameHttp } from '../../backend/src/modules/uploads/http.mjs';
+import { createDiscoveryService } from '../../backend/src/modules/discovery/service.mjs';
+import { createCommunityService } from '../../backend/src/modules/community/service.mjs';
 import { zipFixture } from '../zip-fixture.mjs';
 
 const url=new URL(process.env.DATABASE_URL??'http://invalid');
