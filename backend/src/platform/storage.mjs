@@ -31,10 +31,14 @@ export function createPrivateStorage(config, driver = null) {
       await driver.put({ bucket: config.storage.bucket, root: config.storage.root, key, bytes, visibility: 'private', ifAbsent: true });
       return key;
     },
-    async get(area, id) {
+    async get(area, id, expected = null) {
       const key = keyFor(config.environment, area, id, areas);
       requireDriver();
-      return driver.get({ bucket: config.storage.bucket, root: config.storage.root, key });
+      // Optional expected size/digest reuses platform.game_versions.digest (005)
+      // without any database schema change; the driver always verifies its own
+      // sidecar digest even when no expected value is supplied.
+      return driver.get({ bucket: config.storage.bucket, root: config.storage.root, key,
+        expectedDigest: expected?.digest ?? null, expectedSize: expected?.size ?? null });
     },
   });
 }

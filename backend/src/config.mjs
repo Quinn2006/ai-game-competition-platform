@@ -62,12 +62,29 @@ export function loadConfig(env = process.env) {
   if (localDriver && (endpoint || bucket)) fail('PRIVATE_STORAGE_DRIVER/OBJECT_STORAGE');
   if (!localDriver && env.PRIVATE_STORAGE_ROOT) fail('PRIVATE_STORAGE_ROOT');
   let privateStorageRoot = null;
+  let storageAccount = null;
+  let storageAccountSid = null;
+  let storageExtraSids = Object.freeze([]);
   if (localDriver) {
     if (!env.PRIVATE_STORAGE_ROOT) fail('PRIVATE_STORAGE_ROOT');
     privateStorageRoot = resolve(projectRoot, env.PRIVATE_STORAGE_ROOT);
     const forbidden = [resolve(projectRoot, 'frontend'), resolve(projectRoot, 'backend'),
       resolve(projectRoot, 'data/postgres'), resolve(projectRoot, 'data/backups')];
     if (privateStorageRoot === projectRoot || forbidden.some(dir => under(privateStorageRoot, dir))) fail('PRIVATE_STORAGE_ROOT');
+    // Dedicated Windows service account (or its SID). The ACL check fails closed
+    // unless it equals the running process identity and owns the root.
+    if (!env.PRIVATE_STORAGE_ACCOUNT || !/^[^\s\x00-\x1f]{1,128}$/.test(env.PRIVATE_STORAGE_ACCOUNT)) fail('PRIVATE_STORAGE_ACCOUNT');
+    storageAccount = env.PRIVATE_STORAGE_ACCOUNT;
+    if (env.PRIVATE_STORAGE_ACCOUNT_SID) {
+      if (!/^S-1-\d+(?:-\d+)+$/i.test(env.PRIVATE_STORAGE_ACCOUNT_SID)) fail('PRIVATE_STORAGE_ACCOUNT_SID');
+      storageAccountSid = env.PRIVATE_STORAGE_ACCOUNT_SID.toUpperCase();
+    }
+    // Optional additional trusted SIDs (for example a read-only backup account).
+    if (env.PRIVATE_STORAGE_EXTRA_SIDS) {
+      const list = env.PRIVATE_STORAGE_EXTRA_SIDS.split(',').map(value => value.trim()).filter(Boolean);
+      if (!list.length || list.length > 8 || list.some(value => !/^S-1-\d+(?:-\d+)+$/i.test(value))) fail('PRIVATE_STORAGE_EXTRA_SIDS');
+      storageExtraSids = Object.freeze(list.map(value => value.toUpperCase()));
+    }
   }
   const sessionSecret = env.SESSION_SECRET || null;
   const localMailPreview = env.LOCAL_MAIL_PREVIEW === '1';
@@ -82,7 +99,8 @@ export function loadConfig(env = process.env) {
   if (localMailPreview && environment !== 'development') fail('LOCAL_MAIL_PREVIEW');
   if (sessionSecret && Buffer.byteLength(sessionSecret) < 32) fail('SESSION_SECRET');
   if (production && (!databaseUrl || !sessionSecret || !env.MAIN_ORIGIN || !env.GAME_ORIGIN ||
-      (localDriver ? !privateStorageRoot : !endpoint))) fail('production dependencies');
+      (localDriver ? (!privateStorageRoot || !storageAccount) : !endpoint))) fail('production dependencies');
   return Object.freeze({ environment, port, host, mainOrigin, gameOrigin,
-    databaseUrl, databaseTls, storage: Object.freeze({ driver: storageDriver, endpoint, bucket, root: privateStorageRoot }), submissionsRoot:resolve(projectRoot,env.SUBMISSIONS_ROOT || 'data/submissions'), exportsRoot:resolve(projectRoot,env.EXPORTS_ROOT || 'data/exports'), sessionSecret, localMailPreview,localGames,uploadLimits,scannerPort,gameLoadTimeout,submissionDeadline });
+    databaseUrl, databaseTls, storage: Object.freeze({ driver: storageDriver, endpoint, bucket, root: privateStorageRoot,
+      account: storageAccount, accountSid: storageAccountSid, extraSids: storageExtraSids }), submissionsRoot:resolve(projectRoot,env.SUBMISSIONS_ROOT || 'data/submissions'), exportsRoot:resolve(projectRoot,env.EXPORTS_ROOT || 'data/exports'), sessionSecret, localMailPreview,localGames,uploadLimits,scannerPort,gameLoadTimeout,submissionDeadline });
 }

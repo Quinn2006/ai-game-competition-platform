@@ -23,6 +23,8 @@ try {
   const mailbox = undefined;
   const identity = database && config.sessionSecret ? createIdentityService({ database, localAccounts:true, secret: config.sessionSecret, deletionParticipants:[deletionParticipant,discoveryDeletion,communityDeletion,competitionDeletion,operationsDeletion],
     mail: async () => { throw Error("Mail disabled for local accounts"); } }) : undefined;
+  // Constructing the production driver runs the ACL/identity assertion synchronously.
+  // A refusal throws here, so app.listen below is never reached (fail closed).
   const storage = config.localGames ? createLocalStorage(config.submissionsRoot,config.environment)
     : config.storage.driver === 'local' ? createPrivateStorage(config, createProductionLocalStorageDriver(config))
     : createPrivateStorage(config);
