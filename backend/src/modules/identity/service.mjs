@@ -110,7 +110,8 @@ export function createIdentityService({ database, secret, mail, clock = () => Da
       const outbound = [];
       if (['register','resend','forgot','login','verify','reset','cancel'].includes(action)) await limit(`source:${address}`, 60);
       if (['register','resend','forgot','login'].includes(action)) {
-        input = { ...input, email: emailOf(input.email) };
+        const localName = localAccounts && action === 'login' && typeof input.email === 'string' && /^[a-z][a-z0-9_]{2,31}$/i.test(input.email.trim());
+        input = { ...input, email: localName ? input.email.trim().toLowerCase() : emailOf(input.email) };
         await limit(`account:${input.email}:${action}`, action === 'login' ? 10 : 5);
       }
       if (['mfa/setup','mfa/enable','revalidate','delete'].includes(action)) await limit(`sensitive:${digest(sessionToken ?? '')}`, 10);
