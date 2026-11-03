@@ -2,6 +2,8 @@ import {mountCommunity} from '/community/ui.mjs';
 import {readHistory,saveHistory} from '/catalog/history.mjs';
 const $=s=>document.querySelector(s),cats=['动作','射击','益智','冒险','体育','休闲','模拟经营','其他'];
 const params=new URLSearchParams(location.search);let next=null,busy=false,user=null,serial=0,savedCover='';
+for(const id of ['campus-hero','campus-themes'])document.getElementById(id).hidden=!['/','/discover'].includes(location.pathname);
+for(const anchor of document.querySelectorAll('header nav a'))if(anchor.pathname===location.pathname||(anchor.pathname==='/'&&location.pathname==='/discover'))anchor.setAttribute('aria-current','page');
 function node(tag,text,cls){const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e;}
 function link(text,url){const e=node('a',text);e.href=url;return e;}
 function message(text,error=false){$('#status').textContent=text;$('#status').className=error?'error':'';}

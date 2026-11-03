@@ -1,0 +1,55 @@
+/* Shared visual foundation for the platform's working pages. */
+:root{font-family:Inter,"Microsoft YaHei",system-ui,sans-serif;color:#203e36;background:#f7f7f0;font-synthesis:none;--campus-line:#dce3d7;--campus-green:#244f40}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(ellipse at 100% 0,#e6eddf,transparent 50%);min-height:100vh}
+a{color:var(--campus-green);text-underline-offset:4px}
+.campus-nav{max-width:1180px;margin:0 auto;padding:24px 32px;display:flex;align-items:center;justify-content:space-between;gap:24px;border-bottom:1px solid var(--campus-line)}
+.campus-brand{font-size:22px;font-weight:800;text-decoration:none;white-space:nowrap}
+.campus-brand span{display:block;font-size:11px;font-weight:400;letter-spacing:2px;margin-top:5px;color:#596e60}
+.campus-nav>div{display:flex;flex-wrap:wrap;gap:8px 24px}
+.campus-nav>div>a{font-size:14px;text-decoration:none;min-height:40px;display:inline-flex;align-items:center;border-bottom:2px solid transparent}
+.campus-nav>div>a:hover{color:#a44334;border-bottom-color:#a44334}
+main{max-width:1120px}
+.campus-page-heading{background:#e9eee4;border:1px solid var(--campus-line);border-radius:18px;padding:30px 32px;margin:28px auto 12px;max-width:1072px}
+.campus-page-heading h1{font-size:clamp(28px,3.2vw,40px);letter-spacing:-1px;margin:12px 0;line-height:1.4}
+.campus-page-heading p{line-height:1.8;color:#53685b;max-width:760px}
+.campus-kicker{font-size:11px;letter-spacing:2px;color:#964434!important;margin:0 0 12px}
+section,article,details,form.panel{border-color:var(--campus-line);border-radius:14px}
+section{box-shadow:0 4px 18px #244f4004}
+h2{font-size:23px;line-height:1.45}h3{line-height:1.5}
+input,select,textarea{font:inherit;color:#203e36;background:#fdfefb;border:1px solid #b2c1b4;border-radius:8px;max-width:100%;min-width:0;padding:12px}
+input:not([type=checkbox]):not([type=radio]),textarea{width:100%}
+input[type=checkbox],input[type=radio]{accent-color:var(--campus-green)}
+button{min-height:44px;border-radius:8px;font:inherit;padding:11px 16px;cursor:pointer}
+button:not(.text):not(.danger){border-color:#b2c1b4}
+button:hover{filter:brightness(.96)}button:active{transform:translateY(1px)}button:disabled{opacity:.55;cursor:not-allowed}
+.primary,form>button:not(.text):not(.danger){background:var(--campus-green);color:white}
+:focus-visible{outline:3px solid #9b5c24!important;outline-offset:3px}
+nav{flex-wrap:wrap}nav a{line-height:1.7}
+#notice{background:#eaf0e5;color:#304d3e;border:1px solid var(--campus-line);border-radius:10px;line-height:1.7;overflow-wrap:anywhere}
+#status:not(:empty),#message:not(:empty),.community [role=status]:not(:empty){padding:12px 16px;background:#fff4e9;border-left:3px solid #a45b31;border-radius:5px;line-height:1.7}
+#message.success{background:#eaf0e5;border-color:#386148}
+body:has(#create) main{display:grid;grid-template-columns:minmax(240px,.75fr) minmax(0,1.5fr);gap:20px}
+body:has(#create) main>#notice,body:has(#create) main>#editor{grid-column:1/-1}
+body:has(#create) main>section{margin:0;align-self:start;padding:28px}
+body:has(#create) main>#notice{margin:0}
+body:has(#create) button,body:has(#stage) button{background:var(--campus-green);color:white}
+body:has(#create) #refresh{background:#f0f4eb;color:var(--campus-green)}
+body:has(#stage) #stage{border-radius:14px;overflow:hidden;border:1px solid #315348}
+body:has(#stage) .actions{gap:8px;margin:20px 0}
+body:has(#contest) main>nav,body:has(>#community) main>nav{font-size:13px}
+main:has(>#community){max-width:1072px;padding:28px 32px;margin:28px auto;background:#fff;border:1px solid var(--campus-line);border-radius:18px}
+#community.community{margin:0;padding:8px 0;max-width:none;min-height:180px}
+.community article{display:flex;gap:16px;flex-wrap:wrap;align-items:center;justify-content:space-between}
+body:has(#nav) header{padding-top:24px;padding-bottom:0}
+body:has(#nav) h1{font-size:clamp(30px,3.8vw,44px)}
+body:has(#nav) main{gap:48px;margin-top:28px}
+body:has(#nav) .panel{box-shadow:0 12px 35px #244f4008}
+body:has(#confirm)>header{background:transparent;max-width:1180px;margin:auto;padding:20px 32px;font-size:13px}
+body:has(#confirm)>header .brand{font-size:15px}
+body:has(#confirm) main{margin-top:28px}
+th{background:#edf2e8;color:#304d3e}td{line-height:1.6}
+dialog{max-width:calc(100vw - 32px);border-color:#b2c1b4;box-shadow:0 20px 80px #183e3533}
+[hidden]{display:none!important}
+@media(max-width:760px){.campus-nav{align-items:flex-start;flex-direction:column;padding:20px;gap:14px}.campus-nav>div{gap:4px 20px}.campus-page-heading{margin:20px 16px 8px;padding:24px}body:has(#create) main{grid-template-columns:1fr;padding:16px}body:has(#create) main>section{padding:22px}body:has(#nav) main{margin-top:16px}body:has(#nav) header{padding-top:16px}body:has(#confirm)>header{padding:16px 20px}main:has(>#community){margin:20px 16px;padding:22px}.campus-nav>div>a{font-size:13px}body:has(#stage) .actions button{flex:1 1 140px}.campus-page-heading h1{font-size:28px}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important;scroll-behavior:auto!important}}

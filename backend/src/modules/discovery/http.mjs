@@ -3,6 +3,7 @@ import { createHmac, randomBytes } from 'node:crypto';
 import { AppError } from '../../platform/errors.mjs';
 
 const assets=new Map([['/',['discover.html','text/html']],['/discover',['discover.html','text/html']],['/work',['discover.html','text/html']],['/author',['discover.html','text/html']],['/team',['discover.html','text/html']],['/rankings',['discover.html','text/html']],['/catalog/edit',['discover.html','text/html']],['/catalog/admin',['discover.html','text/html']],['/catalog/ui.mjs',['discover.mjs','text/javascript']],['/catalog/style.css',['discover.css','text/css']],['/catalog/history.mjs',['search-history.mjs','text/javascript']]]);
+assets.set('/catalog/campus.css',['campus.css','text/css']);
 export function createDiscoveryHttp({config,discovery,clock=()=>Date.now()}) {
   const buckets=new Map(),key=randomBytes(32);
   const fail=(code,status,message)=>{throw new AppError(code,status,message);};

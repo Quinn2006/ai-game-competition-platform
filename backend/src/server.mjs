@@ -5,6 +5,7 @@ import { createPrivateStorage } from './platform/storage.mjs';
 import { createApp } from './app.mjs';
 import { createIdentityService } from './modules/identity/service.mjs';
 import { createLocalStorage } from './platform/local-storage.mjs';
+import { createProductionLocalStorageDriver } from './platform/production-local-storage.mjs';
 import { createScanner } from './modules/uploads/scanner.mjs';
 import { createUploadService, deletionParticipant } from './modules/uploads/service.mjs';
 import { createGameHttp } from './modules/uploads/http.mjs';
@@ -22,7 +23,11 @@ try {
   const mailbox = undefined;
   const identity = database && config.sessionSecret ? createIdentityService({ database, localAccounts:true, secret: config.sessionSecret, deletionParticipants:[deletionParticipant,discoveryDeletion,communityDeletion,competitionDeletion,operationsDeletion],
     mail: async () => { throw Error("Mail disabled for local accounts"); } }) : undefined;
-  const storage = config.localGames ? createLocalStorage(config.submissionsRoot,config.environment) : createPrivateStorage(config);
+  // Constructing the production driver runs the ACL/identity assertion synchronously.
+  // A refusal throws here, so app.listen below is never reached (fail closed).
+  const storage = config.localGames ? createLocalStorage(config.submissionsRoot,config.environment)
+    : config.storage.driver === 'local' ? createPrivateStorage(config, createProductionLocalStorageDriver(config))
+    : createPrivateStorage(config);
   const uploads = config.localGames && identity ? createUploadService({database,identity,storage,scan:createScanner({port:config.scannerPort}),limits:config.uploadLimits,deadline:config.submissionDeadline}) : null;
   const operations = database ? createOperationsService({database,identity,contactEmail:process.env.SUPPORT_EMAIL??''}) : null;
   const competition = database && identity ? createCompetitionService({database,identity,onEvent:competitionNotifier(operations)}) : null;
@@ -32,7 +37,7 @@ try {
   const app = createApp({ config, database, storage, log, identity, mailbox, games:games.main, discovery, community, operations, competition });
   if(config.localGames) {
     games.game.on('error',()=>{log('app.failed',{code:'GAME_SERVER_ERROR'});app.close();process.exitCode=1;});
-    const origin=new URL(config.gameOrigin);games.game.listen(Number(origin.port),origin.hostname);
+    const origin=new URL(config.gameListenOrigin);games.game.listen(Number(origin.port),origin.hostname);
   }
   let cleaning = false;
   const cleanup = identity ? setInterval(async () => {

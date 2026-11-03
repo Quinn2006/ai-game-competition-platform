@@ -1,7 +1,12 @@
-import { resolve } from 'node:path';
+import { parse, resolve, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
-const projectRoot = fileURLToPath(new URL('../../', import.meta.url));
+const projectRoot = resolve(fileURLToPath(new URL('../../', import.meta.url)));
 const environments = new Set(['development', 'test', 'production']);
+
+function under(child, parent) {
+  const rel = relative(parent, child);
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
+}
 
 function fail(field) {
   // Never include raw configuration values: URLs may contain credentials.
@@ -41,6 +46,8 @@ export function loadConfig(env = process.env) {
   }
   const databaseTls = env.DATABASE_TLS || (production ? 'verify-full' : 'disable');
   if (!['verify-full', 'disable'].includes(databaseTls) || (production && databaseTls !== 'verify-full')) fail('DATABASE_TLS');
+  const storageDriver = env.PRIVATE_STORAGE_DRIVER || 'object';
+  if (!['object', 'local'].includes(storageDriver)) fail('PRIVATE_STORAGE_DRIVER');
   const endpoint = env.OBJECT_STORAGE_ENDPOINT || null;
   const bucket = env.OBJECT_STORAGE_BUCKET || null;
   if (Boolean(endpoint) !== Boolean(bucket)) fail('OBJECT_STORAGE_ENDPOINT/BUCKET');
@@ -48,10 +55,57 @@ export function loadConfig(env = process.env) {
     origin(endpoint, 'OBJECT_STORAGE_ENDPOINT', production);
     if (!/^[a-z0-9][a-z0-9-]{2,62}$/.test(bucket) || !bucket.endsWith(`-${environment}`)) fail('OBJECT_STORAGE_BUCKET');
   }
+  // A local NTFS private store is an explicit, production-only driver branch.
+  // Object-storage credentials must not be mixed in, and no default path is fabricated.
+  const localDriver = storageDriver === 'local';
+  if (localDriver && !production) fail('PRIVATE_STORAGE_DRIVER');
+  if (localDriver && (endpoint || bucket)) fail('PRIVATE_STORAGE_DRIVER/OBJECT_STORAGE');
+  if (!localDriver && env.PRIVATE_STORAGE_ROOT) fail('PRIVATE_STORAGE_ROOT');
+  if (!localDriver && env.PRIVATE_STORAGE_TRUST_ROOT) fail('PRIVATE_STORAGE_TRUST_ROOT');
+  let privateStorageRoot = null;
+  let privateStorageTrustRoot = null;
+  let storageAccount = null;
+  let storageAccountSid = null;
+  let storageExtraSids = Object.freeze([]);
+  if (localDriver) {
+    if (!env.PRIVATE_STORAGE_ROOT) fail('PRIVATE_STORAGE_ROOT');
+    privateStorageRoot = resolve(projectRoot, env.PRIVATE_STORAGE_ROOT);
+    const forbidden = [resolve(projectRoot, 'frontend'), resolve(projectRoot, 'backend'),
+      resolve(projectRoot, 'data/postgres'), resolve(projectRoot, 'data/backups')];
+    if (privateStorageRoot === projectRoot || forbidden.some(dir => under(privateStorageRoot, dir))) fail('PRIVATE_STORAGE_ROOT');
+    // Optional trusted storage boundary: the guard chain stops at (and always
+    // includes) this directory, which must itself be hardened. Ancestors above
+    // the boundary stay unvalidated: actors there can at most remove or rename
+    // the whole store (availability), never inject or read content. The
+    // boundary must be a real directory, an ancestor of the storage root and
+    // never a volume root (a volume root would guard exactly what the default
+    // already guards, so pretending to trust it gains nothing).
+    if (env.PRIVATE_STORAGE_TRUST_ROOT) {
+      privateStorageTrustRoot = resolve(projectRoot, env.PRIVATE_STORAGE_TRUST_ROOT);
+      if (!under(privateStorageRoot, privateStorageTrustRoot)) fail('PRIVATE_STORAGE_TRUST_ROOT');
+      if (privateStorageTrustRoot === parse(privateStorageTrustRoot).root) fail('PRIVATE_STORAGE_TRUST_ROOT');
+    }
+    // Dedicated Windows service account (or its SID). The ACL check fails closed
+    // unless it equals the running process identity and owns the root.
+    if (!env.PRIVATE_STORAGE_ACCOUNT || !/^[^\s\x00-\x1f]{1,128}$/.test(env.PRIVATE_STORAGE_ACCOUNT)) fail('PRIVATE_STORAGE_ACCOUNT');
+    storageAccount = env.PRIVATE_STORAGE_ACCOUNT;
+    if (env.PRIVATE_STORAGE_ACCOUNT_SID) {
+      if (!/^S-1-\d+(?:-\d+)+$/i.test(env.PRIVATE_STORAGE_ACCOUNT_SID)) fail('PRIVATE_STORAGE_ACCOUNT_SID');
+      storageAccountSid = env.PRIVATE_STORAGE_ACCOUNT_SID.toUpperCase();
+    }
+    // Optional additional trusted SIDs (for example a read-only backup account).
+    if (env.PRIVATE_STORAGE_EXTRA_SIDS) {
+      const list = env.PRIVATE_STORAGE_EXTRA_SIDS.split(',').map(value => value.trim()).filter(Boolean);
+      if (!list.length || list.length > 8 || list.some(value => !/^S-1-\d+(?:-\d+)+$/i.test(value))) fail('PRIVATE_STORAGE_EXTRA_SIDS');
+      storageExtraSids = Object.freeze(list.map(value => value.toUpperCase()));
+    }
+  }
   const sessionSecret = env.SESSION_SECRET || null;
   const localMailPreview = env.LOCAL_MAIL_PREVIEW === '1';
   const localGames = env.LOCAL_GAMES === '1';
-  if(localGames && (environment !== 'development' || !['127.0.0.2','127.0.0.3'].includes(gameHost) || !new URL(gameOrigin).port)) fail('LOCAL_GAMES');
+  const gameListenOrigin = origin(env.GAME_LISTEN_ORIGIN || gameOrigin, 'GAME_LISTEN_ORIGIN', false);
+  const gameListen = new URL(gameListenOrigin);
+  if(localGames && (environment !== 'development' || !['127.0.0.2','127.0.0.3'].includes(gameListen.hostname) || gameListen.protocol !== 'http:' || !gameListen.port)) fail('LOCAL_GAMES');
   const positive = (key,fallback) => { const value=Number(env[key]||fallback);if(!Number.isSafeInteger(value)||value<1)fail(key);return value; };
   const uploadLimits=Object.freeze({compressed:positive('UPLOAD_MAX_BYTES',100000000),expanded:positive('UPLOAD_MAX_EXPANDED_BYTES',300000000),files:positive('UPLOAD_MAX_FILES',500)});
   const scannerPort=positive('CLAMD_PORT',3310);if(scannerPort>65535)fail('CLAMD_PORT');
@@ -60,7 +114,9 @@ export function loadConfig(env = process.env) {
   if(submissionDeadline!==null&&(!Number.isFinite(submissionDeadline)||!/(Z|[+-]\d{2}:\d{2})$/.test(env.SUBMISSION_DEADLINE)))fail('SUBMISSION_DEADLINE');
   if (localMailPreview && environment !== 'development') fail('LOCAL_MAIL_PREVIEW');
   if (sessionSecret && Buffer.byteLength(sessionSecret) < 32) fail('SESSION_SECRET');
-  if (production && (!databaseUrl || !endpoint || !sessionSecret || !env.MAIN_ORIGIN || !env.GAME_ORIGIN)) fail('production dependencies');
-  return Object.freeze({ environment, port, host, mainOrigin, gameOrigin,
-    databaseUrl, databaseTls, storage: Object.freeze({ endpoint, bucket }), submissionsRoot:resolve(projectRoot,env.SUBMISSIONS_ROOT || 'data/submissions'), exportsRoot:resolve(projectRoot,env.EXPORTS_ROOT || 'data/exports'), sessionSecret, localMailPreview,localGames,uploadLimits,scannerPort,gameLoadTimeout,submissionDeadline });
+  if (production && (!databaseUrl || !sessionSecret || !env.MAIN_ORIGIN || !env.GAME_ORIGIN ||
+      (localDriver ? (!privateStorageRoot || !storageAccount) : !endpoint))) fail('production dependencies');
+  return Object.freeze({ environment, port, host, mainOrigin, gameOrigin, gameListenOrigin,
+    databaseUrl, databaseTls, storage: Object.freeze({ driver: storageDriver, endpoint, bucket, root: privateStorageRoot,
+      trustRoot: privateStorageTrustRoot, account: storageAccount, accountSid: storageAccountSid, extraSids: storageExtraSids }), submissionsRoot:resolve(projectRoot,env.SUBMISSIONS_ROOT || 'data/submissions'), exportsRoot:resolve(projectRoot,env.EXPORTS_ROOT || 'data/exports'), sessionSecret, localMailPreview,localGames,uploadLimits,scannerPort,gameLoadTimeout,submissionDeadline });
 }
