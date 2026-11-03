@@ -1,4 +1,4 @@
-param([switch]$Update,[switch]$Start)
+param([switch]$Update,[switch]$Start,[switch]$PassThru)
 $ErrorActionPreference='Stop'
 $project=Split-Path -Parent $PSScriptRoot
 $root=Join-Path $project 'tmp\phase3-clamav'
@@ -35,6 +35,7 @@ if($Start){
     }catch{}finally{$client.Dispose()}
     Start-Sleep -Milliseconds 250
   }
-  if(-not $ready){throw "Scanner did not become ready; inspect logs in $configuration (PID $($process.Id))"}
+  if(-not $ready){if(-not $process.HasExited){$process.Kill();$process.WaitForExit()};throw "Scanner did not become ready; inspect logs in $configuration"}
   Write-Output "Local scanner ready on 127.0.0.1:3310; PID: $($process.Id); configuration: $configuration"
+  if($PassThru){Write-Output $process}
 }
