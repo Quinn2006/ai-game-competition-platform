@@ -55,7 +55,7 @@ npm start
 
 本机已完成初始化；不要重跑 local:init。首次安装才用 `npm run local:init`，遇到已有配置或集群会拒绝重建。Ctrl+C 停网站，`npm run local:stop` 停新库。未安装开机自动启动，重启后执行上述命令复用同一目录。
 
-数据库工具默认复用已审查的 `tmp/phase2-postgres/runtime/pgsql/bin`。清理临时目录或迁移机器前安装匹配版本，通过进程环境变量 PG_BIN 指向 bin 目录。旧 local-identity-* 脚本保留供历史测试，不作为新主库入口。初始化异常时保留现场，不自动擦除或重新初始化。
+新克隆按 [首次安装指南](first-run.md) 运行 `setup-local.cmd`，工具路径保存于私有的 `data/local-tools.json`。数据库工具优先使用进程环境变量 `PG_BIN`，其次使用保存的路径；未配置时保留旧 `tmp/phase2-postgres/runtime/pgsql/bin` 兼容，最后尝试 PATH。ClamAV 使用 `CLAMAV_BIN` 或保存的路径，新安装病毒库与日志写入 `data/clamav/`；未配置的新旧入口仍保留原临时目录兼容。跨机器重新指定工具位置，已有数据库必须匹配 PostgreSQL 主版本。旧 local-identity-* 脚本保留供历史测试，不作为新主库入口。初始化异常时保留现场，不自动擦除或重新初始化。
 
 ## 坚果云收集与导入
 

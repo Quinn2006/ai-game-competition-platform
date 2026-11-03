@@ -1,9 +1,15 @@
 param([switch]$Update,[switch]$Start,[string]$Root,[switch]$PassThru)
 $ErrorActionPreference='Stop'
 $project=Split-Path -Parent $PSScriptRoot
-if(-not $Root){$Root=Join-Path $project 'tmp\phase3-clamav'}
-$runtime=Join-Path $root 'runtime\clamav-1.5.4.win.x64'
-if(-not(Test-Path -LiteralPath (Join-Path $runtime 'clamd.exe'))){throw 'Verified ClamAV 1.5.4 portable runtime is required; see phase 3 documentation.'}
+$toolsPath=Join-Path $project 'data\local-tools.json'
+$tools=if(Test-Path -LiteralPath $toolsPath){Get-Content -LiteralPath $toolsPath -Raw -Encoding UTF8 | ConvertFrom-Json}else{$null}
+$runtime=$env:CLAMAV_BIN
+if(-not $runtime -and $tools){$runtime=$tools.clamAvBin}
+if(-not $Root){
+  $Root=if($runtime){Join-Path $project 'data\clamav'}else{Join-Path $project 'tmp\phase3-clamav'}
+}
+if(-not $runtime){$runtime=Join-Path $root 'runtime\clamav-1.5.4.win.x64'}
+if(-not(Test-Path -LiteralPath (Join-Path $runtime 'clamd.exe'))){throw 'ClamAV missing. Run setup-local.cmd -PgBin ... -ClamAvBin ...; see docs/first-run.md.'}
 $database=Join-Path $root 'database'
 New-Item -ItemType Directory -Path $database -Force | Out-Null
 # Generate only a new configuration directory; existing configuration is never overwritten.

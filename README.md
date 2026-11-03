@@ -13,7 +13,9 @@
 
 双击根目录 `start-local.cmd`。入口会启动 `data/postgres/` 固定主库（默认端口 55440）、ClamAV、网站与隔离试玩；不会自动覆盖旧库。作品保存在 `data/submissions/`。
 
-首次获取源码：准备 Node.js 24+、PowerShell 5.1 或 7、PostgreSQL 工具、ClamAV 和病毒库，执行 `npm ci --ignore-scripts`、`npm run local:init` 后再启动。本机已有新主库时不要重新初始化。
+首次获取源码：按 [首次安装指南](docs/first-run.md) 准备 Node.js 24+、PostgreSQL 工具和 ClamAV，运行 `setup-local.cmd`，以后双击 `start-local.cmd`。安装入口会安装 npm 依赖、生成独立密钥、初始化本项目的 `data/postgres/`、应用迁移、建立本地演示账号并更新病毒库。已有完整配置会复用，不重建数据库。
+
+每个克隆都是独立实例：业务数据、作品、备份、导出都留在各自项目的 `data/`；GitHub 只分发源码，不包含作者的数据或密码。首次安装需要联网获取依赖和病毒库；运行仍需本机 Node.js、PostgreSQL 和 ClamAV，并非免依赖便携包。
 
 迁移后补建本地内置账号，已有账号保持不变。
 

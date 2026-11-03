@@ -3,15 +3,20 @@ import { resolve, join, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomBytes, createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
 import pg from 'pg';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
 const data=join(root,'data'), cluster=join(data,'postgres');
-const bin=process.env.PG_BIN || join(root,'tmp/phase2-postgres/runtime/pgsql/bin');
+const toolsFile=join(data,'local-tools.json');
+const localTools=existsSync(toolsFile)?JSON.parse(readFileSync(toolsFile,'utf8')):{};
+const legacyBin=join(root,'tmp/phase2-postgres/runtime/pgsql/bin');
+const bin=process.env.PG_BIN || localTools.pgBin || (existsSync(legacyBin)?legacyBin:'');
+const pgCommand=name=>bin?join(bin,name+(process.platform==='win32'?'.exe':'')):name;
 const action=process.argv[2];
 const stamp=()=>new Date().toISOString().replace(/[:.]/g,'-');
 function run(name,args,env={}) {
-  const command=name==='icacls'?name:join(bin,name+(process.platform==='win32'?'.exe':''));
+  const command=name==='icacls'?name:pgCommand(name);
   const result=spawnSync(command,args,{encoding:'utf8',windowsHide:true,stdio:'ignore',env:{...process.env,...env},timeout:120000});
   if(result.error || result.status!==0) throw Error(`${name} failed; exit ${result.status}. No credentials printed.`);
   return result.stdout;
@@ -34,7 +39,7 @@ async function state(path=join(data,'credentials.json')){return JSON.parse(await
 async function start(){
   const s=await state(),u=new URL(s.databaseDevelopment);
   if(!await exists(join(cluster,'PG_VERSION')))throw Error('Initialize the fixed instance first');
-  const status=spawnSync(join(bin,process.platform==='win32'?'pg_ctl.exe':'pg_ctl'),['-D',cluster,'status'],{windowsHide:true,stdio:'ignore'});
+  const status=spawnSync(pgCommand('pg_ctl'),['-D',cluster,'status'],{windowsHide:true,stdio:'ignore'});
   if(status.status!==0)run('pg_ctl',['-D',cluster,'-l',join(data,'postgres.log'),'-o',`-p ${u.port} -h 127.0.0.1`,'-w','start']);
 }
 export async function copyTree(source,target){
