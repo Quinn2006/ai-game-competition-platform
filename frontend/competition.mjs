@@ -29,14 +29,14 @@ function renderResults(){const box=$('#results');box.replaceChildren();if(!publi
  const entries=r.entries.filter(x=>!$('#category').value||x.category===$('#category').value);table(box,entries,[['rank','名次'],['title','作品'],['name','参赛主体'],[r=>r.popularity.display,'人气分'],...(r.kind==='final'?[[r=>r.average.display,'评委均分'],[r=>r.total.display,'总分']]:[])]);
  table(box,publicResult.awards.map(a=>({...a,title:r.entries.find(e=>e.id===a.subject_id)?.title})),[['name','奖项'],['title','作品']]);}
 async function refresh(){
- current=contests.find(c=>c.id===$('#contest').value);if(!current)return;
+ current=contests.find(c=>c.id===$('#contest').value);if(!current)return;$('#admin-forms').replaceChildren();$('#workspace').replaceChildren();
  $('#schedule').replaceChildren(el('h2',current.title),el('p',`报名截止：${new Date(current.registration_end).toLocaleString('zh-CN')} · 提交截止：${new Date(current.submission_end).toLocaleString('zh-CN')} · 团队最多 ${current.team_limit} 人`));
  publicResult=await api('results',{contestId:current.id},true);renderResults();
  if(!user)return;const box=$('#workspace');box.replaceChildren(el('h2','我的参赛与评审'));mine=await api('mine',{contestId:current.id},true);
  if(!mine.subject){form(box,'报名参赛','register',[['kind','参赛方式','text',[['personal','个人'],['team','团队']]],['name','个人或团队展示名称'],['realName','真实姓名（仅供管理员核验）'],['studentNumber','学号（仅供管理员核验）']]);
-  form(box,'查看邀请','invite-preview',[['token','邀请码']],{onSuccess:(r,detail)=>{detail.append(el('p','邀请你加入：'+r.name));form(detail,'确认加入团队','join',[['realName','真实姓名'],['studentNumber','学号'],['confirm','我确认加入此团队','checkbox']],{defaults:{subjectId:r.id,token:detail.querySelector('[name=token]').value}});}});
+  form(box,'查看邀请','invite-preview',[['token','邀请码']],{onSuccess:(r,detail)=>{detail.querySelector('.invite-preview')?.remove();const result=el('div');result.className='invite-preview';result.append(el('p','邀请你加入：'+r.name));detail.append(result);form(result,'确认加入团队','join',[['realName','真实姓名'],['studentNumber','学号'],['confirm','我确认加入此团队','checkbox']],{defaults:{subjectId:r.id,token:detail.querySelector('[name=token]').value}});}});
  }else{const s=mine.subject;box.append(el('p',`${s.name} · ${mine.member.verified?'学生资格已核验':'等待学生资格人工核验'}`));const defaults={subjectId:s.id};
-  if(s.captain_id===user.id){if(s.kind==='team')form(box,'生成7天邀请码','invite',[],{defaults,onSuccess:r=>notice('邀请码：'+r.token+'；有效期至 '+new Date(r.expires).toLocaleString('zh-CN'))});
+  if(s.captain_id===user.id){if(s.kind==='team')form(box,'生成7天邀请码','invite',[],{defaults,onSuccess:(r,detail)=>{let output=detail.querySelector('.invite-output');if(!output){output=el('div');output.className='invite-output';output.setAttribute('role','status');detail.append(output);}output.replaceChildren(el('p','邀请码（可选中复制）'),el('code',r.token),el('p','有效期至 '+new Date(r.expires).toLocaleString('zh-CN')));notice('邀请码已生成，请在下方邀请码框中查看。');}});
    form(box,'提交参赛作品','submit',[['workId','创作台中的作品编号'],['confirmAnonymous','我已提交去署名版本，并确认作品包、标题及内容不含身份信息','checkbox']],{defaults});
    form(box,'申请转团队 / 换队长 / 退赛','change',[['kind','变更类型','text',[['convert','个人转团队'],['captain','更换队长'],['withdraw','退赛']]],['successorId','新队长账号编号（其他申请填当前账号编号）'],['reason','申请理由','textarea'],['confirmTransfer','我同意将个人参赛作品转为团队作品','checkbox']],{defaults});
   }else form(box,'申请退出团队','change',[['reason','退出理由','textarea']],{defaults:{...defaults,kind:'leave'}});
@@ -45,7 +45,7 @@ async function refresh(){
   if(publicResult?.result?.kind==='final')form(box,'提交成绩申诉','appeal',[['kind','申诉类别','text',[['score_calculation','评分计算错误'],['program','程序计算错误'],['procedure','评审流程违规']]],['body','申诉依据','textarea']],{defaults:{...defaults,resultId:publicResult.result.id}});
  }
  if(user.roles.includes('judge')){const assignments=await api('assignments',{contestId:current.id},true);box.append(el('h3','匿名评审任务'),el('p','平台隐藏身份字段；游戏内容或公开资料仍可能使身份可被推断。发现署名或利益冲突请联系管理员。'));
-  for(const [i,r]of assignments.items.entries()){const card=el('article');card.append(el('h3','评审作品 '+(i+1)));box.append(card);const play=el('button','开始匿名试玩');card.append(play);play.onclick=async()=>{play.disabled=true;try{const response=await fetch('/api/games/judge-preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subjectId:r.subject_id})}),value=await response.json();if(!response.ok)throw Error(value.error?.code??'加载失败');const frame=el('iframe');frame.title='匿名作品试玩';frame.setAttribute('sandbox','allow-scripts');frame.src=value.src;card.append(frame);}catch(e){notice(e.message);}finally{play.disabled=false;}};
+  for(const [i,r]of assignments.items.entries()){const card=el('article');card.className=r.hidden?'work-hidden':r.featured?'work-featured':'work-normal';card.append(el('h3','评审作品 '+(i+1)),el('p',r.hidden?'已下架 · 暂停试玩和评分':r.featured?'精选':'正常'));if(r.hidden){box.append(card);continue;}box.append(card);const play=el('button','开始匿名试玩');card.append(play);play.onclick=async()=>{play.disabled=true;try{const response=await fetch('/api/games/judge-preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subjectId:r.subject_id})}),value=await response.json();if(!response.ok)throw Error(value.error?.code??'加载失败');const frame=el('iframe');frame.title='匿名作品试玩';frame.setAttribute('sandbox','allow-scripts');frame.src=value.src;card.append(frame);}catch(e){notice(e.message);}finally{play.disabled=false;}};
    if(r.locked)card.append(el('p','评分已提交并锁定。'));else form(card,'提交评分','score',[['scores','创新 / 游戏性 / 主题 / 视听 / 稳定性，五项0—100分，用英文逗号分隔'],['comment','整体评价（必填）','textarea']],{defaults:{subjectId:r.subject_id}});
   }
  }
@@ -54,6 +54,7 @@ async function refresh(){
 async function adminForms(){const box=$('#admin-forms');box.replaceChildren();$('#admin').hidden=false;
  form(box,'创建比赛','create',[['title','比赛名称'],...['registrationStart','registrationEnd','submissionStart','submissionEnd','reviewStart','reviewEnd'].map((key,i)=>[key,['报名开始','报名截止','提交开始','提交截止','评审开始','评审截止'][i],'datetime-local']),['teamLimit','团队人数上限','number']],{onSuccess:async()=>{await load();}});
  if(!current)return;
+ const deletion=form(box,'永久删除此比赛','delete',[['title','输入完整比赛名称：'+current.title]],{sensitive:true,onSuccess:async()=>{current=null;await load();}});deletion.prepend(el('p','永久删除报名、团队、邀请、参赛提交关系、评分、成绩、奖项、申诉和关联通知，无法撤销。创作台原始作品仍保留。'));
  const data=await api('admin',{contestId:current.id},true);table(box,data.subjects,[['id','主体编号'],['name','名称'],['kind','形式']]);table(box,data.members,[['account_id','账号编号'],['subject_id','主体编号'],[r=>r.verified?'已核验':'待核验','资格']]);table(box,data.changes,[['id','申请编号'],['kind','类型'],['state','状态']]);
  form(box,'再验证并查看学生身份材料','identities',[],{sensitive:true,onSuccess:(r,detail)=>table(detail,r.members,[['account_id','账号编号'],['real_name','真实姓名'],['student_number','学号']])});
  const subject=['subjectId','参赛主体','text',data.subjects.filter(x=>!x.withdrawn).map(s=>[s.id,s.name])];
@@ -69,8 +70,8 @@ async function adminForms(){const box=$('#admin-forms');box.replaceChildren();$(
  form(box,'结案申诉','resolve-appeal',[['appealId','申诉编号'],['reason','核查结论与处理说明','textarea']],{sensitive:true});
  form(box,'核查完成并发布成绩','publish',[['resultId','待发布结果编号'],['reason','核查结论','textarea'],['awardSubject','获奖主体','text',data.subjects.map(s=>[s.id,s.name])],['awardName','自定义奖项名称']],{sensitive:true});
 }
-async function load(){const data=await api('list',{},true);contests=data.items;const select=$('#contest');select.replaceChildren();for(const c of contests){const o=el('option',c.title);o.value=c.id;select.append(o);}if(!contests.length){select.append(el('option','尚无比赛'));$('#results').replaceChildren(el('p','新比赛公布后将在这里展示。'));if(user?.roles.includes('admin'))await adminForms();return;}await refresh();}
-$('#contest').onchange=()=>refresh().catch(e=>notice(e.message));$('#category').onchange=renderResults;
+async function load(){current=null;$('#workspace').replaceChildren();$('#admin-forms').replaceChildren();$('#schedule').replaceChildren();const data=await api('list',{},true);contests=data.items;const select=$('#contest');select.replaceChildren();for(const c of contests){const o=el('option',c.title);o.value=c.id;select.append(o);}if(!contests.length){select.append(el('option','尚无比赛'));$('#results').replaceChildren(el('p','新比赛公布后将在这里展示。'));if(user?.roles.includes('admin'))await adminForms();return;}await refresh();}
+$('#contest').onchange=async()=>{const selector=$('#contest');selector.disabled=true;try{await refresh();}catch(e){notice(e.message);}finally{selector.disabled=false;}};$('#category').onchange=renderResults;
 for(const c of ['动作','射击','益智','冒险','体育','休闲','模拟经营','其他']){const o=el('option',c);o.value=c;$('#category').append(o);}
 try{const r=await fetch('/api/identity/me');if(r.ok)user=(await r.json()).user;await load();}catch(e){notice(e.message);}
 

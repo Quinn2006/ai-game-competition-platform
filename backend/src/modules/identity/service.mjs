@@ -12,7 +12,7 @@ const emailOf = value => {
   return value.trim().toLowerCase();
 };
 const passwordOf = value => {
-  if (typeof value !== 'string' || [...value].length < 15 || [...value].length > 128) fail('INVALID_PASSWORD', 400, '密码须为 15—128 个字符');
+  if (typeof value !== 'string' || [...value].length < 6 || [...value].length > 128) fail('INVALID_PASSWORD', 400, '密码须为 6—128 个字符');
   return value;
 };
 const uuid = value => typeof value === 'string' && /^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(value);

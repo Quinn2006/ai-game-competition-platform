@@ -1,7 +1,7 @@
 import {readFile} from 'node:fs/promises';
 import {AppError} from '../../platform/errors.mjs';
 const read=new Set(['mine','admin','assignments','inspection']);
-const write=new Set(['create','register','invite-preview','join','invite','verify','submit','change','consent','decide','assign','assign-judge','score','unlock','invalidate','snapshot','publish','exclude','appeal','resolve-appeal','identities']);
+const write=new Set(['delete','create','register','invite-preview','join','invite','verify','submit','change','consent','decide','assign','assign-judge','score','unlock','invalidate','snapshot','publish','exclude','appeal','resolve-appeal','identities']);
 const fail=(code,status)=>{throw new AppError(code,status,'请求未完成，请检查输入和登录状态');};
 export function createCompetitionHttp({config,competition}){
  return async(req,res,requestId)=>{

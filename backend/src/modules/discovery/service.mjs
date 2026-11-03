@@ -27,11 +27,11 @@ const from = `FROM platform.works w JOIN platform.game_versions v ON v.id=w.publ
   LEFT JOIN LATERAL (SELECT max(occurred_at) AS published_at FROM platform.upload_events e WHERE e.work_id=w.id AND e.version_id=v.id AND (e.action='rollback' OR (e.action='decide' AND e.detail->>'status'='approved'))) pub ON true
   LEFT JOIN platform.discovery_teams t ON t.id=p.team_id LEFT JOIN platform.discovery_metrics m ON m.work_id=w.id`;
 const visible = `v.status='approved' AND NOT v.revoked AND NOT v.withdrawn AND v.scan_status='clean' AND a.status='active'`;
-const fields = `w.id,p.title,p.summary,p.instructions,p.category,p.tags,p.cover,
+const fields = `w.id,p.title,p.summary,p.instructions,p.category,p.tags,p.cover,p.featured,
   a.id AS author_id,a.nickname AS author_name,t.id AS team_id,t.name AS team_name,
   m.likes,m.plays,m.popularity,COALESCE(pub.published_at,v.created_at) AS published_at`;
 export function publicWork(r) {
-  return {id:r.id,title:r.title,summary:r.summary,instructions:r.instructions,category:r.category,tags:r.tags,cover:r.cover,
+  return {featured:r.featured===true,id:r.id,title:r.title,summary:r.summary,instructions:r.instructions,category:r.category,tags:r.tags,cover:r.cover,
     author:{id:r.author_id,nickname:r.author_name},team:r.team_id?{id:r.team_id,name:r.team_name}:null,
     likes:r.likes===null?null:Number(r.likes),plays:r.plays===null?null:Number(r.plays),popularity:r.popularity,publishedAt:r.published_at};
 }

@@ -28,6 +28,8 @@ export async function operationsCases(db){
  const work=randomUUID(),version=randomUUID();await db.query("INSERT INTO platform.works(id,owner_id,title) VALUES($1,$2,'测试作品')",[work,userId]);await db.query("INSERT INTO platform.game_versions(id,work_id,status,digest,metadata,findings,scan_status) VALUES($1,$2,'approved','test','{}','[]','clean')",[version,work]);await db.query('UPDATE platform.works SET published_version=$2 WHERE id=$1',[work,version]);
  await assert.rejects(run('batch',{ids:[work],operation:'hide'}),{code:'CONFIRMATION_REQUIRED'});
  await danger('batch',{ids:[work],operation:'hide'});assert.equal((await db.query('SELECT published_version FROM platform.works WHERE id=$1',[work])).rows[0].published_version,null);await assert.rejects(db.query('UPDATE platform.works SET published_version=$2 WHERE id=$1',[work,version]),/hidden/);
+ assert.equal((await run('notifications',{},userToken)).items.filter(n=>n.title==='作品已下架').length,1);
+ await danger('batch',{ids:[work],operation:'hide'});assert.equal((await run('notifications',{},userToken)).items.filter(n=>n.title==='作品已下架').length,1);
  await danger('batch',{ids:[work],operation:'restore'});assert.equal((await db.query('SELECT published_version FROM platform.works WHERE id=$1',[work])).rows[0].published_version,version);
  await assert.rejects(danger('batch',{ids:[work,randomUUID()],operation:'hide'}),{code:'NOT_FOUND'});assert.equal((await db.query('SELECT published_version FROM platform.works WHERE id=$1',[work])).rows[0].published_version,version);
  const resourceId=randomUUID(),p=await proof(resourceId);await run('settings',{resourceId,proof:p,confirmed:true,days:90});await assert.rejects(run('settings',{resourceId,proof:p,confirmed:true,days:180}),{code:'FORBIDDEN'});

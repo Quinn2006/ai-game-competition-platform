@@ -40,8 +40,8 @@ export function createOperationsService({database,identity,mail,ai,contactEmail=
   limitations:['有效试玩按保留中的每日明细汇总，超过明细保留期的日期不可重建。','比赛、报名及有效评分数量为当前实时总数。']};}
  async function users(c,input){const q=String(input.q??'').trim();if(q.length>100)fail('INVALID_QUERY');const state=input.status??'',role=input.role??'';
   if(state&&!['active','pending','deleting','deleted','disabled'].includes(state)||role&&!['admin','judge'].includes(role))fail('INVALID_FILTER');
-  const [from,to]=dateRange(input),offset=Number(input.offset??0);if(!Number.isSafeInteger(offset)||offset<0||offset>100000)fail('INVALID_OFFSET');
-  return {items:(await c.query(`SELECT id,nickname,status,roles,created_at FROM platform.accounts WHERE nickname ILIKE $1 ESCAPE '\\' AND ($2='' OR status=$2) AND ($3='' OR $3=ANY(roles)) AND created_at>=$4 AND created_at<$5 ORDER BY created_at DESC,id LIMIT 100 OFFSET $6`,['%'+q.replace(/[\\%_]/g,'\\$&')+'%',state,role,from,to,offset])).rows};}
+  const range=dateRange(input),from=input.from?range[0]:null,to=input.to?range[1]:null,offset=Number(input.offset??0);if(!Number.isSafeInteger(offset)||offset<0||offset>100000)fail('INVALID_OFFSET');
+  const rows=(await c.query(`SELECT id,nickname,status,roles,created_at FROM platform.accounts WHERE nickname ILIKE $1 ESCAPE '\\' AND ($2='' OR status=$2) AND ($3='' OR $3=ANY(roles)) AND ($4::timestamptz IS NULL OR created_at>=$4) AND ($5::timestamptz IS NULL OR created_at<$5) ORDER BY created_at DESC,id LIMIT 101 OFFSET $6`,['%'+q.replace(/[\\%_]/g,'\\$&')+'%',state,role,from,to,offset])).rows;return {items:rows.slice(0,100),nextOffset:rows.length>100?offset+100:null};}
  const dangerous=new Set(['batch','announcement-save','announcement-action','settings','sensitive-edit']);
  const service={
   announcements,
@@ -99,7 +99,7 @@ export function createOperationsService({database,identity,mail,ai,contactEmail=
      if(!Array.isArray(input.ids)||input.ids.length<1||input.ids.length>100||input.ids.some(id=>!uuid(id))||new Set(input.ids).size!==input.ids.length||!['hide','restore','feature','unfeature'].includes(input.operation))fail('INVALID_BATCH');
      for(const id of [...input.ids].sort()){
       const w=(await c.query('SELECT * FROM platform.works WHERE id=$1 FOR UPDATE',[id])).rows[0];if(!w)fail('NOT_FOUND',404);
-      if(input.operation==='hide'){await c.query('INSERT INTO platform.operations_hidden(work_id,version_id) VALUES($1,$2) ON CONFLICT DO NOTHING',[id,w.published_version]);await c.query('UPDATE platform.works SET published_version=NULL WHERE id=$1',[id]);}
+      if(input.operation==='hide'){const hidden=await c.query('INSERT INTO platform.operations_hidden(work_id,version_id) VALUES($1,$2) ON CONFLICT DO NOTHING RETURNING work_id',[id,w.published_version]);await c.query('UPDATE platform.works SET published_version=NULL WHERE id=$1',[id]);if(hidden.rowCount&&w.owner_id)await notify(c,{recipients:[w.owner_id],key:'work-hidden:'+randomUUID(),title:'作品已下架',body:'你的作品「'+w.title+'」已被管理员下架，暂时无法公开试玩。如有疑问，请通过反馈联系管理员。',important:true});}
       else if(input.operation==='restore'){
        const h=(await c.query('SELECT version_id FROM platform.operations_hidden WHERE work_id=$1',[id])).rows[0];if(!h)fail('NOT_HIDDEN',409);
        if(h.version_id&&!(await c.query("SELECT v.id FROM platform.game_versions v JOIN platform.accounts a ON a.id=$3 WHERE v.id=$1 AND v.work_id=$2 AND v.status='approved' AND v.scan_status='clean' AND NOT v.revoked AND NOT v.withdrawn AND a.status='active'",[h.version_id,id,w.owner_id])).rowCount)fail('RESTORE_UNSAFE',409);

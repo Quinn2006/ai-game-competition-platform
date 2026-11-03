@@ -9,7 +9,7 @@ const hash=s=>createHash('sha256').update(s).digest('hex');
 const uuid=s=>typeof s==='string'&&/^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(s);
 const text=(v,max=1000)=>{if(typeof v!=='string'||!v.trim()||v.length>max)fail('INVALID_TEXT');return v.trim();};
 const admin=u=>{if(!u.roles.includes('admin'))fail('FORBIDDEN',403);};
-const sensitive=new Set(['verify','decide','unlock','invalidate','publish','exclude','resolve-appeal','identities','assign-judge']);
+const sensitive=new Set(['delete','verify','decide','unlock','invalidate','publish','exclude','resolve-appeal','identities','assign-judge']);
 export const deletionParticipant={
  async check(c,id){if((await c.query("SELECT 1 FROM platform.contest_subjects s JOIN platform.competitions ct ON ct.id=s.contest_id WHERE s.captain_id=$1 AND s.kind='team' AND NOT s.withdrawn AND ct.archived_at IS NULL",[id])).rowCount)fail('CAPTAIN_TRANSFER_REQUIRED',409);},
  async finalize(c,id){await c.query(`UPDATE platform.discovery_teams t SET members=(SELECT COALESCE(jsonb_agg(jsonb_build_object('nickname',CASE WHEN a.id=$1 OR a.status='deleted' THEN '已注销用户' ELSE a.nickname END)),'[]')
@@ -76,6 +76,23 @@ export function createCompetitionService({database,identity,clock=()=>Date.now()
    if(!uuid(input.contestId))fail('INVALID_CONTEST');
    // A per-contest lock serializes membership, capacity, assignment and deadline decisions.
    const contest=(await c.query('SELECT * FROM platform.competitions WHERE id=$1 FOR UPDATE',[input.contestId])).rows[0];if(!contest)fail('NOT_FOUND',404);
+   if(action==='delete'){
+    admin(u);if(input.title!==contest.title)fail('TITLE_CONFIRMATION_REQUIRED');
+    // Delete only this contest's records; uploaded works and other contests remain independent.
+    await c.query(`DELETE FROM platform.notifications WHERE event_key IN
+     (SELECT 'contest-event:'||id FROM platform.contest_events WHERE contest_id=$1)
+     OR event_key IN(SELECT event_key FROM platform.notification_archives WHERE contest_id=$1)`,[contest.id]);
+    await c.query('DELETE FROM platform.notification_archives WHERE contest_id=$1',[contest.id]);
+    for(const table of ['contest_appeals','contest_awards'])await c.query(`DELETE FROM platform.${table} WHERE result_id IN(SELECT id FROM platform.contest_results WHERE contest_id=$1)`,[contest.id]);
+    for(const table of ['contest_reviews','contest_changes','contest_invites'])await c.query(`DELETE FROM platform.${table} WHERE subject_id IN(SELECT id FROM platform.contest_subjects WHERE contest_id=$1)`,[contest.id]);
+    await c.query('DELETE FROM platform.contest_members WHERE contest_id=$1',[contest.id]);
+    await c.query('UPDATE platform.work_profiles SET team_id=NULL WHERE team_id IN(SELECT id FROM platform.contest_subjects WHERE contest_id=$1)',[contest.id]);
+    await c.query('DELETE FROM platform.discovery_teams WHERE id IN(SELECT id FROM platform.contest_subjects WHERE contest_id=$1)',[contest.id]);
+    for(const table of ['contest_results','contest_exclusions','contest_events','contest_subjects'])await c.query(`DELETE FROM platform.${table} WHERE contest_id=$1`,[contest.id]);
+    await c.query('DELETE FROM platform.competitions WHERE id=$1',[contest.id]);
+    await c.query('INSERT INTO platform.operations_events(id,actor_id,action,target_id,request_id,detail) VALUES($1,$2,$3,$4,$5,$6)',[randomUUID(),u.id,'competition_deleted',contest.id,context.requestId,{title:contest.title}]);
+    return {ok:true};
+   }
    if(action==='snapshot'){
     admin(u);if(typeof input.final!=='boolean')fail('INVALID_INPUT');
     const now=clock(),midnight=Math.floor((now+8*3600000)/86400000)*86400000-8*3600000;
@@ -153,8 +170,8 @@ export function createCompetitionService({database,identity,clock=()=>Date.now()
    }
    if(action==='assignments'){
     if(!u.roles.includes('judge'))fail('FORBIDDEN',403);
-    return {items:(await c.query(`SELECT r.subject_id,r.scores,r.comment,r.locked FROM platform.contest_reviews r
-     JOIN platform.contest_subjects s ON s.id=r.subject_id WHERE s.contest_id=$1 AND r.judge_id=$2 AND r.valid AND NOT s.withdrawn`,[contest.id,u.id])).rows};
+    return {items:(await c.query(`SELECT r.subject_id,r.scores,r.comment,r.locked,EXISTS(SELECT 1 FROM platform.operations_hidden h WHERE h.work_id=s.work_id) AS hidden,COALESCE(p.featured,false) AS featured FROM platform.contest_reviews r
+     JOIN platform.contest_subjects s ON s.id=r.subject_id LEFT JOIN platform.work_profiles p ON p.work_id=s.work_id WHERE s.contest_id=$1 AND r.judge_id=$2 AND r.valid AND NOT s.withdrawn`,[contest.id,u.id])).rows};
    }
    const s=await subject(c,input.subjectId,contest.id),m=await member(c,contest.id,u.id),captain=s.captain_id===u.id;
    if(action==='assign-judge'){

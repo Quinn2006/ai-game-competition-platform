@@ -3,9 +3,10 @@ import {randomUUID} from 'node:crypto';
 import {createIdentityService} from '../../backend/src/modules/identity/service.mjs';
 import {createOperationsService} from '../../backend/src/modules/operations/service.mjs';
 export async function localIdentityCases(db){
- const email='local-'+randomUUID()+'@example.test',password='本机密码 local safe password 123';let sent=0;
+ const email='local-'+randomUUID()+'@example.test',password='测试密码六位';let sent=0;
  const service=createIdentityService({database:db,secret:'local-identity-test-key',localAccounts:true,mail:async()=>{sent++;throw Error('No email allowed');}});
  const ctx={requestId:randomUUID(),address:'local-policy-test'};
+ for(const password of ['12345','长'.repeat(129)])await assert.rejects(service.run('register',{email,password},ctx),{code:'INVALID_PASSWORD'});
  await service.run('register',{email,password},ctx);const login=await service.run('login',{email,password},ctx);assert.equal(login.user.status,'active');assert.equal(sent,0);
  await service.run('register',{email:email.toUpperCase(),password:'another password 987654321'},ctx);assert.equal((await db.query('SELECT count(*) FROM platform.accounts WHERE email=$1',[email])).rows[0].count,'1');
  const stored=(await db.query('SELECT password_hash FROM platform.accounts WHERE email=$1',[email])).rows[0].password_hash;assert.notEqual(stored,password);assert.ok(stored);

@@ -28,7 +28,7 @@ button:hover{filter:brightness(.96)}button:active{transform:translateY(1px)}butt
 nav{flex-wrap:wrap}nav a{line-height:1.7}
 #notice{background:#eaf0e5;color:#304d3e;border:1px solid var(--campus-line);border-radius:10px;line-height:1.7;overflow-wrap:anywhere}
 #status:not(:empty),#message:not(:empty),.community [role=status]:not(:empty){padding:12px 16px;background:#fff4e9;border-left:3px solid #a45b31;border-radius:5px;line-height:1.7}
-#message.success{background:#eaf0e5;border-color:#386148}
+#message.success:not(:empty){background:#eaf0e5;border-color:#386148}
 body:has(#create) main{display:grid;grid-template-columns:minmax(240px,.75fr) minmax(0,1.5fr);gap:20px}
 body:has(#create) main>#notice,body:has(#create) main>#editor{grid-column:1/-1}
 body:has(#create) main>section{margin:0;align-self:start;padding:28px}
@@ -51,5 +51,12 @@ body:has(#confirm) main{margin-top:28px}
 th{background:#edf2e8;color:#304d3e}td{line-height:1.6}
 dialog{max-width:calc(100vw - 32px);border-color:#b2c1b4;box-shadow:0 20px 80px #183e3533}
 [hidden]{display:none!important}
+main,section,article,details,form,nav,nav>div{min-width:0}
+summary,h1,h2,h3,button,a{overflow-wrap:anywhere}
+details>summary{white-space:normal}
+.work-normal{border-left:5px solid #397451!important;background:#eff7f0!important;color:#244f40!important}
+.work-featured{border-left:5px solid #a77014!important;background:#fff5d8!important;color:#6d480b!important}
+.work-hidden{border-left:5px solid #b34a48!important;background:#fff0ee!important;color:#8b302c!important}
+.work-state{display:inline-block;font-size:13px;font-weight:650;padding:4px 9px;border-radius:5px}
 @media(max-width:760px){.campus-nav{align-items:flex-start;flex-direction:column;padding:20px;gap:14px}.campus-nav>div{gap:4px 20px}.campus-page-heading{margin:20px 16px 8px;padding:24px}body:has(#create) main{grid-template-columns:1fr;padding:16px}body:has(#create) main>section{padding:22px}body:has(#nav) main{margin-top:16px}body:has(#nav) header{padding-top:16px}body:has(#confirm)>header{padding:16px 20px}main:has(>#community){margin:20px 16px;padding:22px}.campus-nav>div>a{font-size:13px}body:has(#stage) .actions button{flex:1 1 140px}.campus-page-heading h1{font-size:28px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
