@@ -1,7 +1,12 @@
-import { resolve } from 'node:path';
+import { resolve, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
-const projectRoot = fileURLToPath(new URL('../../', import.meta.url));
+const projectRoot = resolve(fileURLToPath(new URL('../../', import.meta.url)));
 const environments = new Set(['development', 'test', 'production']);
+
+function under(child, parent) {
+  const rel = relative(parent, child);
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
+}
 
 function fail(field) {
   // Never include raw configuration values: URLs may contain credentials.
@@ -41,12 +46,28 @@ export function loadConfig(env = process.env) {
   }
   const databaseTls = env.DATABASE_TLS || (production ? 'verify-full' : 'disable');
   if (!['verify-full', 'disable'].includes(databaseTls) || (production && databaseTls !== 'verify-full')) fail('DATABASE_TLS');
+  const storageDriver = env.PRIVATE_STORAGE_DRIVER || 'object';
+  if (!['object', 'local'].includes(storageDriver)) fail('PRIVATE_STORAGE_DRIVER');
   const endpoint = env.OBJECT_STORAGE_ENDPOINT || null;
   const bucket = env.OBJECT_STORAGE_BUCKET || null;
   if (Boolean(endpoint) !== Boolean(bucket)) fail('OBJECT_STORAGE_ENDPOINT/BUCKET');
   if (endpoint) {
     origin(endpoint, 'OBJECT_STORAGE_ENDPOINT', production);
     if (!/^[a-z0-9][a-z0-9-]{2,62}$/.test(bucket) || !bucket.endsWith(`-${environment}`)) fail('OBJECT_STORAGE_BUCKET');
+  }
+  // A local NTFS private store is an explicit, production-only driver branch.
+  // Object-storage credentials must not be mixed in, and no default path is fabricated.
+  const localDriver = storageDriver === 'local';
+  if (localDriver && !production) fail('PRIVATE_STORAGE_DRIVER');
+  if (localDriver && (endpoint || bucket)) fail('PRIVATE_STORAGE_DRIVER/OBJECT_STORAGE');
+  if (!localDriver && env.PRIVATE_STORAGE_ROOT) fail('PRIVATE_STORAGE_ROOT');
+  let privateStorageRoot = null;
+  if (localDriver) {
+    if (!env.PRIVATE_STORAGE_ROOT) fail('PRIVATE_STORAGE_ROOT');
+    privateStorageRoot = resolve(projectRoot, env.PRIVATE_STORAGE_ROOT);
+    const forbidden = [resolve(projectRoot, 'frontend'), resolve(projectRoot, 'backend'),
+      resolve(projectRoot, 'data/postgres'), resolve(projectRoot, 'data/backups')];
+    if (privateStorageRoot === projectRoot || forbidden.some(dir => under(privateStorageRoot, dir))) fail('PRIVATE_STORAGE_ROOT');
   }
   const sessionSecret = env.SESSION_SECRET || null;
   const localMailPreview = env.LOCAL_MAIL_PREVIEW === '1';
@@ -60,7 +81,8 @@ export function loadConfig(env = process.env) {
   if(submissionDeadline!==null&&(!Number.isFinite(submissionDeadline)||!/(Z|[+-]\d{2}:\d{2})$/.test(env.SUBMISSION_DEADLINE)))fail('SUBMISSION_DEADLINE');
   if (localMailPreview && environment !== 'development') fail('LOCAL_MAIL_PREVIEW');
   if (sessionSecret && Buffer.byteLength(sessionSecret) < 32) fail('SESSION_SECRET');
-  if (production && (!databaseUrl || !endpoint || !sessionSecret || !env.MAIN_ORIGIN || !env.GAME_ORIGIN)) fail('production dependencies');
+  if (production && (!databaseUrl || !sessionSecret || !env.MAIN_ORIGIN || !env.GAME_ORIGIN ||
+      (localDriver ? !privateStorageRoot : !endpoint))) fail('production dependencies');
   return Object.freeze({ environment, port, host, mainOrigin, gameOrigin,
-    databaseUrl, databaseTls, storage: Object.freeze({ endpoint, bucket }), submissionsRoot:resolve(projectRoot,env.SUBMISSIONS_ROOT || 'data/submissions'), exportsRoot:resolve(projectRoot,env.EXPORTS_ROOT || 'data/exports'), sessionSecret, localMailPreview,localGames,uploadLimits,scannerPort,gameLoadTimeout,submissionDeadline });
+    databaseUrl, databaseTls, storage: Object.freeze({ driver: storageDriver, endpoint, bucket, root: privateStorageRoot }), submissionsRoot:resolve(projectRoot,env.SUBMISSIONS_ROOT || 'data/submissions'), exportsRoot:resolve(projectRoot,env.EXPORTS_ROOT || 'data/exports'), sessionSecret, localMailPreview,localGames,uploadLimits,scannerPort,gameLoadTimeout,submissionDeadline });
 }

@@ -5,6 +5,7 @@ import { createPrivateStorage } from './platform/storage.mjs';
 import { createApp } from './app.mjs';
 import { createIdentityService } from './modules/identity/service.mjs';
 import { createLocalStorage } from './platform/local-storage.mjs';
+import { createProductionLocalStorageDriver } from './platform/production-local-storage.mjs';
 import { createScanner } from './modules/uploads/scanner.mjs';
 import { createUploadService, deletionParticipant } from './modules/uploads/service.mjs';
 import { createGameHttp } from './modules/uploads/http.mjs';
@@ -22,7 +23,9 @@ try {
   const mailbox = undefined;
   const identity = database && config.sessionSecret ? createIdentityService({ database, localAccounts:true, secret: config.sessionSecret, deletionParticipants:[deletionParticipant,discoveryDeletion,communityDeletion,competitionDeletion,operationsDeletion],
     mail: async () => { throw Error("Mail disabled for local accounts"); } }) : undefined;
-  const storage = config.localGames ? createLocalStorage(config.submissionsRoot,config.environment) : createPrivateStorage(config);
+  const storage = config.localGames ? createLocalStorage(config.submissionsRoot,config.environment)
+    : config.storage.driver === 'local' ? createPrivateStorage(config, createProductionLocalStorageDriver(config))
+    : createPrivateStorage(config);
   const uploads = config.localGames && identity ? createUploadService({database,identity,storage,scan:createScanner({port:config.scannerPort}),limits:config.uploadLimits,deadline:config.submissionDeadline}) : null;
   const operations = database ? createOperationsService({database,identity,contactEmail:process.env.SUPPORT_EMAIL??''}) : null;
   const competition = database && identity ? createCompetitionService({database,identity,onEvent:competitionNotifier(operations)}) : null;
