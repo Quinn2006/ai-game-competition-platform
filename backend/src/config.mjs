@@ -103,7 +103,9 @@ export function loadConfig(env = process.env) {
   const sessionSecret = env.SESSION_SECRET || null;
   const localMailPreview = env.LOCAL_MAIL_PREVIEW === '1';
   const localGames = env.LOCAL_GAMES === '1';
-  if(localGames && (environment !== 'development' || !['127.0.0.2','127.0.0.3'].includes(gameHost) || !new URL(gameOrigin).port)) fail('LOCAL_GAMES');
+  const gameListenOrigin = origin(env.GAME_LISTEN_ORIGIN || gameOrigin, 'GAME_LISTEN_ORIGIN', false);
+  const gameListen = new URL(gameListenOrigin);
+  if(localGames && (environment !== 'development' || !['127.0.0.2','127.0.0.3'].includes(gameListen.hostname) || gameListen.protocol !== 'http:' || !gameListen.port)) fail('LOCAL_GAMES');
   const positive = (key,fallback) => { const value=Number(env[key]||fallback);if(!Number.isSafeInteger(value)||value<1)fail(key);return value; };
   const uploadLimits=Object.freeze({compressed:positive('UPLOAD_MAX_BYTES',100000000),expanded:positive('UPLOAD_MAX_EXPANDED_BYTES',300000000),files:positive('UPLOAD_MAX_FILES',500)});
   const scannerPort=positive('CLAMD_PORT',3310);if(scannerPort>65535)fail('CLAMD_PORT');
@@ -114,7 +116,7 @@ export function loadConfig(env = process.env) {
   if (sessionSecret && Buffer.byteLength(sessionSecret) < 32) fail('SESSION_SECRET');
   if (production && (!databaseUrl || !sessionSecret || !env.MAIN_ORIGIN || !env.GAME_ORIGIN ||
       (localDriver ? (!privateStorageRoot || !storageAccount) : !endpoint))) fail('production dependencies');
-  return Object.freeze({ environment, port, host, mainOrigin, gameOrigin,
+  return Object.freeze({ environment, port, host, mainOrigin, gameOrigin, gameListenOrigin,
     databaseUrl, databaseTls, storage: Object.freeze({ driver: storageDriver, endpoint, bucket, root: privateStorageRoot,
       trustRoot: privateStorageTrustRoot, account: storageAccount, accountSid: storageAccountSid, extraSids: storageExtraSids }), submissionsRoot:resolve(projectRoot,env.SUBMISSIONS_ROOT || 'data/submissions'), exportsRoot:resolve(projectRoot,env.EXPORTS_ROOT || 'data/exports'), sessionSecret, localMailPreview,localGames,uploadLimits,scannerPort,gameLoadTimeout,submissionDeadline });
 }

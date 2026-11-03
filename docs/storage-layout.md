@@ -31,6 +31,10 @@ README.md、HANDOFF.md、项目计划书  保留
 
 ## 启动与持久化
 
+双击 `start-local.cmd` 后选择 `1` 本地启动或 `2` 公网模式。也可执行 `start-local.cmd -Mode Local` 或 `start-local.cmd -Mode Public` 跳过选择。`-CheckOnly` 不建立隧道。
+
+公网模式需要 PATH 中已有 `cloudflared`；缺失时提示安装命令并退出，不自动安装。启动时建立两个 Cloudflare Quick Tunnel，分别连接主站与隔离试玩监听地址；等待连接注册后显示临时 HTTPS 地址。免费地址可能每次变化，仅用于公网测试，不代表生产验收通过。隧道失败或超时会提示 `tmp/public-tunnels/` 下日志路径，并关闭本次创建的隧道。Ctrl+C 退出时也清理隧道；电脑必须保持联网和运行。公网模式使用当前本地数据，分享前确认内容适合公开。
+
 启动入口优先使用 PowerShell 7；未安装时自动使用 Windows PowerShell 5.1。`start-local.ps1` 保持 UTF-8 BOM 编码，以便 Windows PowerShell 正确读取中文。
 
 正常启动后等待网站就绪，自动在默认浏览器打开发现页；`-CheckOnly` 不打开浏览器。等待最多 60 秒，超时可使用终端显示的网址手动访问。

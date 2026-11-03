@@ -37,7 +37,7 @@ try {
   const app = createApp({ config, database, storage, log, identity, mailbox, games:games.main, discovery, community, operations, competition });
   if(config.localGames) {
     games.game.on('error',()=>{log('app.failed',{code:'GAME_SERVER_ERROR'});app.close();process.exitCode=1;});
-    const origin=new URL(config.gameOrigin);games.game.listen(Number(origin.port),origin.hostname);
+    const origin=new URL(config.gameListenOrigin);games.game.listen(Number(origin.port),origin.hostname);
   }
   let cleaning = false;
   const cleanup = identity ? setInterval(async () => {
