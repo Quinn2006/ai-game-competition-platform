@@ -11,9 +11,19 @@
 
 ## 一键本地启动
 
-双击根目录 `start-local.cmd`。入口会启动 `data/postgres/` 固定主库（默认端口 55440）、ClamAV、网站与隔离试玩；不会自动覆盖旧库或创建账号。作品保存在 `data/submissions/`。
+双击根目录 `start-local.cmd`。入口会启动 `data/postgres/` 固定主库（默认端口 55440）、ClamAV、网站与隔离试玩；不会自动覆盖旧库。作品保存在 `data/submissions/`。
 
 首次获取源码：准备 Node.js 24+、PowerShell 7、PostgreSQL 工具、ClamAV 和病毒库，执行 `npm ci --ignore-scripts`、`npm run local:init` 后再启动。本机已有新主库时不要重新初始化。
+
+迁移后补建本地内置账号，已有账号保持不变。
+
+|角色|账号|初始密码|
+|---|---|---|
+|管理员|Admin06|abcd123456|
+|评委|Judge1、Judge2、Judge3、Judge4、Judge5|abcd123456|
+
+账号名不区分大小写，直接在登录页输入即可。Admin06首次登录仍须设置TOTP两步验证。评委已有judge角色，具体作品仍由比赛分配。初始化只接受回环development库，数据库保存各自独立加盐的密码哈希；这些是公开的本地演示凭据，不能用于正式部署。重复启动不重置密码、不覆盖已有角色、不恢复停用或注销账号；同名已有账号保留原样。普通用户注册仍使用邮箱格式和15—128字符密码。当前本地密码重置工具支持这些账号名。
+
 
 启动后访问 http://127.0.0.1:4320/discover 。Ctrl+C 关闭网站和本次启动的扫描器，数据库保持运行；停止数据库使用 `npm run local:stop`。旧版本的 `-State`、`-DatabasePort` 参数不再用于新入口。
 

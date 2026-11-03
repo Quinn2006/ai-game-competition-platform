@@ -2,7 +2,7 @@ param([Parameter(Mandatory=$true)][string]$State,[ValidateSet('reset-password','
 $ErrorActionPreference='Stop'
 $statePath=(Resolve-Path -LiteralPath $State).Path
 $credentials=Get-Content -LiteralPath (Join-Path $statePath 'credentials.json') -Raw | ConvertFrom-Json
-$accountName=Read-Host '账号名（邮箱格式）'
+$accountName=Read-Host '账号名（邮箱或内置账号名）'
 $payload=@{action=$Action;email=$accountName}
 if($Action -eq 'reset-password'){
  $securePassword=Read-Host '新密码（15—128字符，输入不显示）' -AsSecureString

@@ -50,6 +50,8 @@ try {
         if($LASTEXITCODE -ne 0){throw '新主库启动失败。'}
         & node --env-file=.env scripts\migrate.mjs up
         if($LASTEXITCODE -ne 0){throw '迁移检查失败，网站未启动。'}
+        & node --env-file=.env scripts\local-builtin-accounts.mjs
+        if($LASTEXITCODE -ne 0){throw '内置账号初始化失败，网站未启动。'}
         if(-not(Test-Scanner)){
             & (Join-Path $project 'scripts\local-scanner.ps1') -Start -PassThru | ForEach-Object {
                 if($_ -is [Diagnostics.Process]){$scanner=$_}else{Write-Host $_}
