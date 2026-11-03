@@ -1,9 +1,10 @@
-param([ValidateRange(1024,65535)][int]$Port=55432)
+param([ValidateRange(1024,65535)][int]$Port=55432,[string]$Runtime,[string]$State)
 $ErrorActionPreference = 'Stop'
 $project = Split-Path -Parent $PSScriptRoot
-$runtime = Join-Path $project 'tmp\phase2-postgres\runtime\pgsql\bin'
+if (-not $Runtime) { $Runtime = Join-Path $project 'tmp\phase2-postgres\runtime\pgsql\bin' }
 if (-not (Test-Path -LiteralPath (Join-Path $runtime 'initdb.exe'))) { throw 'Download the reviewed PostgreSQL portable package first.' }
-$state = Join-Path $project ('tmp\phase2-postgres\run-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+if (-not $State) { $State = Join-Path $project ('tmp\phase2-postgres\run-' + (Get-Date -Format 'yyyyMMdd-HHmmss')) }
+$state = [IO.Path]::GetFullPath($State)
 if (Test-Path -LiteralPath $state) { throw 'Refusing to reuse a database directory.' }
 New-Item -ItemType Directory -Path $state | Out-Null
 $password = [Convert]::ToHexString([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(32))

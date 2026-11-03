@@ -9,6 +9,18 @@
 
 # AI 小游戏比赛平台
 
+## 一键本地启动
+
+双击根目录 `start-local.cmd`。入口会启动 `data/postgres/` 固定主库（默认端口 55440）、ClamAV、网站与隔离试玩；不会自动覆盖旧库或创建账号。作品保存在 `data/submissions/`。
+
+首次获取源码：准备 Node.js 24+、PowerShell 7、PostgreSQL 工具、ClamAV 和病毒库，执行 `npm ci --ignore-scripts`、`npm run local:init` 后再启动。本机已有新主库时不要重新初始化。
+
+启动后访问 http://127.0.0.1:4320/discover 。Ctrl+C 关闭网站和本次启动的扫描器，数据库保持运行；停止数据库使用 `npm run local:stop`。旧版本的 `-State`、`-DatabasePort` 参数不再用于新入口。
+
+[目录与操作手册](docs/storage-layout.md) · [v0.2.0 发布说明](docs/release-v0.2.0.md) · [后续开发约定](AGENTS.md)
+
+## 历史阶段记录
+
 阶段 4 最终本地联调已完成：正式迁移、作品发布与目录、创作台资料编辑、详情内嵌试玩和撤销隐藏已接通。见 [最新验收](docs/phase-4/verification.md)。下方“等待阶段 3”说明保留为之前的独立分支历史，当前已解除。
 
 阶段 4 独立分支：公开展示、搜索与发现已实现并完成独立验证，按用户要求等待阶段 3 完成后联调，尚未标记整体完成。见 [阶段 4 功能与接入步骤](docs/phase-4/development.md)、[验证记录](docs/phase-4/verification.md)。
@@ -40,6 +52,9 @@ npm start
 - [阶段 1 启动、环境变量、迁移与人工验收说明](docs/phase-1/development.md)
 - [阶段 1 验证与阻塞记录](docs/phase-1/verification.md)
 - [阶段 1 架构与模块边界](docs/phase-1/architecture.md)
+- [阶段 8 本地运维与部署手册](docs/phase-8/runbook.md)
+- [阶段 8 验证、需求核对与上线阻塞](docs/phase-8/verification.md)
+- [阶段 1—8 主分支联调验收](docs/phase-8/integration.md)
 
 - [阶段 0 验证记录](docs/phase-0/verification.md)
 - [130 条需求追踪与用例](docs/phase-0/requirements.md)

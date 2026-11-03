@@ -8,6 +8,7 @@ import { createDiscoveryHttp } from './modules/discovery/http.mjs';
 import { createCompetitionHttp } from './modules/competition/http.mjs';
 import { createOperationsHttp } from './modules/operations/http.mjs';
 import { appendAudit } from './modules/audit/repository.mjs';
+import { dependenciesReady } from './platform/health.mjs';
 
 export function createApp({ config, database, storage, log, identity, mailbox, games, discovery, community, operations, competition }) {
   const operationsHttp = createOperationsHttp({config,operations});
@@ -44,8 +45,7 @@ export function createApp({ config, database, storage, log, identity, mailbox, g
       }
       let data = { status: 'alive', requestId };
       if (route === '/health/ready') {
-        const results = await Promise.allSettled([databaseReady(database, config.environment), storage.health()]);
-        if (results.some(result => result.status !== 'fulfilled' || result.value !== true)) {
+        if (!await dependenciesReady([() => databaseReady(database, config.environment), () => storage.health()])) {
           throw new AppError('DEPENDENCIES_NOT_READY', 503, '依赖服务尚未就绪');
         }
         data = { status: 'ready', requestId };
@@ -57,7 +57,14 @@ export function createApp({ config, database, storage, log, identity, mailbox, g
       const result = publicError(error, requestId);
       status = result.status;
       code = result.body.error.code;
-      if(status>=500 && database) { try { await appendAudit(database,{action:'system.error',requestId,outcome:'failure'}); } catch { /* readiness may fail before migrations exist */ } }
+      if(status>=500 && database) {
+        // A failed database must not make error reporting wait indefinitely.
+        // The request still reaches the independent stdout logger below.
+        await dependenciesReady([async () => {
+          await appendAudit(database,{action:'system.error',requestId,outcome:'failure'});
+          return true;
+        }], 250);
+      }
       res.writeHead(status);
       res.end(req.method === 'HEAD' ? undefined : JSON.stringify(result.body));
     } finally {
