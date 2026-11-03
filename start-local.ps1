@@ -1,6 +1,6 @@
 ﻿#Requires -Version 5.1
 [CmdletBinding()]
-param([switch]$CheckOnly,[ValidateSet('Local','Public')][string]$Mode)
+param([switch]$CheckOnly,[ValidateSet('Local','Public')][string]$Mode,[ValidateSet('Temporary','Own')][string]$TunnelMode)
 $ErrorActionPreference='Stop'
 $project=$PSScriptRoot
 $previous=@{}
@@ -8,11 +8,14 @@ $scanner=$null
 $browserJob=$null
 $result=0
 $tunnels=@()
-function Start-Tunnel([string]$Target){
+function Start-Tunnel([string]$Target,[string]$TokenFile){
     $dir=Join-Path $project 'tmp\public-tunnels'
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
     $log=Join-Path $dir ([Guid]::NewGuid().ToString('N')+'.log')
-    $process=Start-Process -FilePath (Get-Command cloudflared).Source -ArgumentList @('tunnel','--url',$Target,'--no-autoupdate','--logfile',$log) -WindowStyle Hidden -PassThru
+    $arguments=@('tunnel','--no-autoupdate','--logfile',('"'+$log+'"'))
+    if($TokenFile){$arguments+=@('run','--token-file',('"'+$TokenFile+'"'))}
+    else {$arguments+=@('--url',$Target)}
+    $process=Start-Process -FilePath (Get-Command cloudflared).Source -ArgumentList $arguments -WindowStyle Hidden -PassThru
     $script:tunnels+=$process
     $deadline=(Get-Date).AddSeconds(60)
     while((Get-Date) -lt $deadline){
@@ -20,7 +23,10 @@ function Start-Tunnel([string]$Target){
         if(Test-Path -LiteralPath $log){
             $content=Get-Content -LiteralPath $log -Raw
             $match=[regex]::Match([string]$content,'https://[a-z0-9-]+\.trycloudflare\.com')
-            if($match.Success -and $content -match 'Registered tunnel connection'){return $match.Value}
+            if($content -match 'Registered tunnel connection'){
+                if($TokenFile){return $Target}
+                if($match.Success){return $match.Value}
+            }
         }
         Start-Sleep -Milliseconds 300
     }
@@ -50,6 +56,31 @@ try {
     if($Mode -eq 'Public' -and -not(Get-Command cloudflared -ErrorAction SilentlyContinue)){
         throw '没有找到隧道工具 cloudflared。请安装后重新启动：winget install --id Cloudflare.cloudflared --exact'
     }
+    if($Mode -eq 'Public'){
+        if(-not $TunnelMode){
+            if($CheckOnly){throw '请指定 -TunnelMode Temporary 或 Own。'}
+            Write-Host '请选择公网方式：1 免费临时隧道；2 自有隧道（固定域名）'
+            do {$choice=Read-Host '输入 1 或 2'} while($choice -notin @('1','2'))
+            $TunnelMode=if($choice -eq '2'){'Own'}else{'Temporary'}
+        }
+        if($TunnelMode -eq 'Own'){
+            $ownPath=Join-Path $project 'data\public-tunnel.json'
+            if(-not(Test-Path -LiteralPath $ownPath -PathType Leaf)){throw '尚未配置自有隧道：缺少 data\public-tunnel.json。请按 docs/public-tunnel.md 配置主站域名、试玩域名和 Token 文件。'}
+            try {$own=Get-Content -LiteralPath $ownPath -Raw | ConvertFrom-Json} catch {throw 'data\public-tunnel.json 不是有效 JSON，请按 docs/public-tunnel.md 修正。'}
+            foreach($field in @('mainOrigin','gameOrigin')){
+                $parsed=$null
+                if(-not [Uri]::TryCreate([string]$own.$field,[UriKind]::Absolute,[ref]$parsed) -or $parsed.Scheme -ne 'https' -or $parsed.UserInfo -or $parsed.AbsolutePath -ne '/' -or $parsed.Query -or $parsed.Fragment -or $parsed.HostNameType -ne 'Dns'){throw "自有隧道 $field 必须是完整 HTTPS 域名，不能包含路径、账号或参数。"}
+            }
+            $mainHost=([Uri]$own.mainOrigin).Host;$gameHost=([Uri]$own.gameOrigin).Host
+            if($mainHost -eq $gameHost -or $mainHost.EndsWith('.'+$gameHost) -or $gameHost.EndsWith('.'+$mainHost)){throw '主站和试玩必须使用分离的域名，不能相同或互为父子域名。'}
+            if(-not $own.tokenFile){throw '自有隧道缺少 tokenFile，请按 docs/public-tunnel.md 配置。'}
+            $tokenPath=[IO.Path]::GetFullPath((Join-Path $project ([string]$own.tokenFile)))
+            if($tokenPath.Contains('"') -or -not(Test-Path -LiteralPath $tokenPath -PathType Leaf)){throw '自有隧道 Token 文件不存在，请检查 tokenFile 路径。'}
+            if(-not ([string](Get-Content -LiteralPath $tokenPath -Raw)).Trim()){throw '自有隧道 Token 文件为空。'}
+            Write-Host 'PASS: 自有隧道本地配置完整。Token 有效性将在连接时检查；云端路由和 DNS 尚未验证。'
+            Write-Host ('请确认云端路由：'+$own.mainOrigin+' -> http://127.0.0.1:4320；'+$own.gameOrigin+' -> http://127.0.0.2:4321')
+        }
+    }
     if(-not(Get-Command node -ErrorAction SilentlyContinue)){throw '未找到 Node.js。'}
     $major='console.log(process.versions.node.split(".")[0])' | & node --input-type=module
     if($LASTEXITCODE -ne 0 -or [int]$major -lt 24){throw '需要 Node.js 24 或更新版本。'}
@@ -74,9 +105,15 @@ try {
     if($CheckOnly){Write-Host 'PASS: 新入口、依赖、固定主库配置与网站端口检查通过（未启动服务）。'}
     else {
         if($Mode -eq 'Public'){
+            if($TunnelMode -eq 'Own'){
+                Write-Host '正在连接自有隧道……'
+                $settings.MAIN_ORIGIN=Start-Tunnel ([string]$own.mainOrigin).TrimEnd('/') $tokenPath
+                $settings.GAME_ORIGIN=([string]$own.gameOrigin).TrimEnd('/')
+            } else {
             Write-Host '正在连接两个免费公网隧道，请稍候……'
             $settings.MAIN_ORIGIN=Start-Tunnel 'http://127.0.0.1:4320'
             $settings.GAME_ORIGIN=Start-Tunnel 'http://127.0.0.2:4321'
+            }
         }
         foreach($name in $settings.Keys){$previous[$name]=[Environment]::GetEnvironmentVariable($name);[Environment]::SetEnvironmentVariable($name,$settings[$name])}
         & node scripts\local-runtime.mjs start
