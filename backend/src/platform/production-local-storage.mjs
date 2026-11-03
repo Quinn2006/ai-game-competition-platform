@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { lstat, mkdir, open, readlink, realpath, link, unlink, rename, readdir } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { assertStorageAcl, createWindowsAclProbe, guardPaths } from './acl.mjs';
+import { assertStorageAcl, assertStorageAclAsync, createWindowsAclProbe, guardPaths } from './acl.mjs';
 
 // Production-only private NTFS store. Same driver contract as the object-store
 // supplier (checkPrivate / put / get); never served as a public static directory.
@@ -69,6 +69,8 @@ export function createProductionLocalStorageDriver(config, deps = {}) {
   const forbidden = [resolve(projectRoot, 'frontend'), resolve(projectRoot, 'backend'),
     resolve(projectRoot, 'data/postgres'), resolve(projectRoot, 'data/backups')];
   if (root === projectRoot || forbidden.some(dir => under(root, dir))) throw new Error('Private storage root refused');
+  const trustRoot = config.storage.trustRoot ? resolve(config.storage.trustRoot) : null;
+  if (trustRoot && !under(root, trustRoot)) throw new Error('Private storage trust root refused');
   const environment = config.environment;
   const envDir = join(root, environment);
   const areaDirs = areas.map(area => join(envDir, area));
@@ -77,11 +79,43 @@ export function createProductionLocalStorageDriver(config, deps = {}) {
   const probe = deps.aclProbe ?? createWindowsAclProbe();
   const hooks = deps.hooks ?? {};
   const aclOptions = { root, account: config.storage.account, accountSid: config.storage.accountSid,
-    extraSids: config.storage.extraSids ?? [], probe };
-  // Startup assertion: synchronous, inside server.mjs try-block. A refusal here
-  // prevents app.listen entirely (fail closed). Only root + parent chain is
-  // required; area directories are created and checked at readiness.
-  assertStorageAcl({ ...aclOptions, paths: guardPaths(root) });
+    extraSids: config.storage.extraSids ?? [], probe, trustRoot };
+  // Startup assertion: synchronous, one-shot, inside server.mjs try-block. A
+  // refusal here prevents app.listen entirely (fail closed). The guard chain
+  // covers the root, every parent up to the trust boundary (or the volume root
+  // when no boundary is configured) and checks owner, identity, rights and
+  // delete/replace exposure; area directories are created and checked later.
+  assertStorageAcl({ ...aclOptions, paths: guardPaths(root, [], trustRoot), accountPaths: [root] });
+
+  // Readiness re-check: asynchronous (spawnSync would block the event loop on
+  // every readiness poll), rate limited, and never cached past its validity
+  // window, so a widened runtime ACL turns readiness into 503 within one
+  // refresh interval instead of being masked indefinitely.
+  const aclRefreshMs = deps.aclRefreshIntervalMs ?? 30000;
+  const aclMinIntervalMs = deps.aclMinIntervalMs ?? 5000;
+  const readinessPaths = guardPaths(root, areaDirs, trustRoot);
+  let aclState = { ok: true, checkedAt: Date.now() }; // seeded by the startup assertion
+  let aclInflight = null;
+  let aclLastProbe = 0; // the startup assertion used the synchronous probe, not the async path
+  async function refreshAcl() {
+    aclLastProbe = Date.now();
+    try {
+      await assertStorageAclAsync({ ...aclOptions, paths: readinessPaths, accountPaths: [root, ...areaDirs] });
+      aclState = { ok: true, checkedAt: Date.now() };
+    } catch (error) {
+      aclState = { ok: false, checkedAt: Date.now(), error };
+    }
+  }
+  async function aclStatus() {
+    const now = Date.now();
+    const stale = now - aclState.checkedAt >= aclRefreshMs;
+    if (stale && !aclInflight && now - aclLastProbe >= aclMinIntervalMs) {
+      const run = refreshAcl().finally(() => { if (aclInflight === run) aclInflight = null; });
+      aclInflight = run;
+    }
+    if (aclInflight && (stale || !aclState.ok)) await aclInflight.catch(() => {});
+    return aclState;
+  }
 
   const locks = new Map();
   let orphansIsolated = false;
@@ -123,6 +157,62 @@ export function createProductionLocalStorageDriver(config, deps = {}) {
           created = true;
         }
         await rename(join(dir, name), join(destination, `${basename(dir)}-${name}`));
+      }
+    }
+  }
+
+  // .meta stores the stable relative object key (environment/area/id), never an
+  // absolute path, so a store can be recovered under a different root. readMeta
+  // re-validates the key on every read and refuses anything else.
+  async function readMeta(metaPath, key) {
+    await assertPrivate(metaPath, 'file');
+    const handle = await open(metaPath, 'r');
+    try {
+      const stat = await handle.stat();
+      if (!stat.isFile() || stat.size > 4096) throw new Error('Private storage metadata refused');
+      const raw = await scanHandle(handle, stat.size, true);
+      const value = JSON.parse(raw.bytes.toString('utf8'));
+      if (value?.v !== 1 || value.key !== key || !digestPattern.test(value.sha256) ||
+          !Number.isSafeInteger(value.size) || value.size < 0) throw new Error('Private storage metadata refused');
+      return value;
+    } finally { await handle.close(); }
+  }
+
+  // Pairing scan at readiness: an object without its .meta, a .meta without its
+  // object, or a pair whose .meta is not valid for that location is moved to
+  // the non-addressable _orphans area. Quarantined files are never published
+  // and never silently deleted; operators inspect and recover them by hand.
+  async function isolateUnpaired() {
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const destination = join(orphanRoot, `pairs-${stamp}`);
+    let created = false;
+    const move = async (from, name) => {
+      if (!created) {
+        await mkdir(destination, { recursive: true, mode: 0o700 });
+        await assertPrivate(destination, 'directory');
+        created = true;
+      }
+      await rename(from, join(destination, name));
+    };
+    for (const dir of areaDirs) {
+      const area = basename(dir);
+      const names = await readdir(dir);
+      const objects = new Set(names.filter(name => !name.startsWith('.')));
+      const metas = new Set(names.filter(name => name.startsWith('.') && name.endsWith('.meta')));
+      for (const object of objects) {
+        const metaName = `.${object}.meta`;
+        let paired = false;
+        if (metas.has(metaName)) {
+          try { await readMeta(join(dir, metaName), `${environment}/${area}/${object}`); paired = true; }
+          catch { paired = false; }
+        }
+        if (paired) continue;
+        await move(join(dir, object), `${area}-${object}`);
+        if (metas.has(metaName)) await move(join(dir, metaName), `${area}-${metaName}`);
+      }
+      for (const metaName of metas) {
+        const object = metaName.slice(1, -5);
+        if (!objects.has(object)) await move(join(dir, metaName), `${area}-${metaName}`);
       }
     }
   }
@@ -185,21 +275,6 @@ export function createProductionLocalStorageDriver(config, deps = {}) {
     }
   }
 
-  async function readMeta(objectPath) {
-    const meta = metaPathFor(objectPath);
-    await assertPrivate(meta, 'file');
-    const handle = await open(meta, 'r');
-    try {
-      const stat = await handle.stat();
-      if (!stat.isFile() || stat.size > 4096) throw new Error('Private storage metadata refused');
-      const raw = await scanHandle(handle, stat.size, true);
-      const value = JSON.parse(raw.bytes.toString('utf8'));
-      if (value?.v !== 1 || value.key !== objectPath || !digestPattern.test(value.sha256) ||
-          !Number.isSafeInteger(value.size) || value.size < 0) throw new Error('Private storage metadata refused');
-      return value;
-    } finally { await handle.close(); }
-  }
-
   // Per-key serialization: concurrent writers cannot read each other's half-written
   // temp files, and the losing writer is resolved through the same immutable check.
   function withKeyLock(key, task) {
@@ -219,11 +294,11 @@ export function createProductionLocalStorageDriver(config, deps = {}) {
         throw new Error('Private storage driver mismatch');
       }
       await ensureLayout();
-      if (!orphansIsolated) { await isolateOrphans(); orphansIsolated = true; }
-      // Re-check at readiness: the root plus every area directory. The parent
-      // chain was asserted at startup; keeping this to one probe call fits the
-      // 2s readiness budget while still detecting a widened runtime ACL.
-      assertStorageAcl({ ...aclOptions, paths: [root, ...areaDirs] });
+      if (!orphansIsolated) { await isolateOrphans(); await isolateUnpaired(); orphansIsolated = true; }
+      // Async, rate-limited re-check of the root, the boundary, the parent chain
+      // below it and every area directory. A refusal fails readiness (503).
+      const status = await aclStatus();
+      if (!status.ok) throw new Error('Private storage ACL refused');
       return true;
     },
     async put({ key, bytes, visibility, ifAbsent, bucket }) {
@@ -237,7 +312,7 @@ export function createProductionLocalStorageDriver(config, deps = {}) {
       return withKeyLock(key, async () => {
         const size = bytes.length;
         const digest = createHash('sha256').update(bytes).digest('hex');
-        const metaBytes = Buffer.from(JSON.stringify({ v: 1, key: path, size, sha256: digest }), 'utf8');
+        const metaBytes = Buffer.from(JSON.stringify({ v: 1, key, size, sha256: digest }), 'utf8');
         const metaDigest = createHash('sha256').update(metaBytes).digest('hex');
         const object = await atomicPublish(path, bytes, size, digest);
         try {
@@ -252,6 +327,7 @@ export function createProductionLocalStorageDriver(config, deps = {}) {
     },
     async get({ key, bucket, expectedDigest, expectedSize }) {
       if (bucket) throw new Error('Private storage read refused');
+      if (expectedDigest != null && !digestPattern.test(expectedDigest)) throw new Error('Private storage integrity refused');
       const path = pathFor(key);
       await assertPrivate(dirname(path), 'directory');
       await assertPrivate(path, 'file');
@@ -260,12 +336,14 @@ export function createProductionLocalStorageDriver(config, deps = {}) {
       try {
         const stat = await handle.stat();
         if (!stat.isFile()) throw new Error('Private storage object refused');
-        const meta = await readMeta(path);
-        if (meta.key !== path || stat.size !== meta.size) throw new Error('Private storage integrity refused');
+        const meta = await readMeta(metaPathFor(path), key);
+        if (stat.size !== meta.size) throw new Error('Private storage integrity refused');
         const checked = await scanHandle(handle, stat.size, true);
         if (checked.size !== meta.size || checked.digest !== meta.sha256) throw new Error('Private storage integrity refused');
-        // Optional expected digest reuses platform.game_versions.digest (005) with
-        // no database schema change; the sidecar digest is always verified.
+        // Optional expected digest binds this read to platform.game_versions.digest
+        // (migration 005, SHA-256 hex, immutable). The sidecar digest is always
+        // verified; production release/serving reads must additionally supply the
+        // trusted database digest so a compromised store cannot substitute content.
         if (expectedDigest && checked.digest !== expectedDigest) throw new Error('Private storage integrity refused');
         if (expectedSize != null && stat.size !== expectedSize) throw new Error('Private storage integrity refused');
         return checked.bytes;

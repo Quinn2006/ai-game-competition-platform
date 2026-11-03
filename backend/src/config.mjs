@@ -1,4 +1,4 @@
-import { resolve, relative, isAbsolute } from 'node:path';
+import { parse, resolve, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const projectRoot = resolve(fileURLToPath(new URL('../../', import.meta.url)));
 const environments = new Set(['development', 'test', 'production']);
@@ -61,7 +61,9 @@ export function loadConfig(env = process.env) {
   if (localDriver && !production) fail('PRIVATE_STORAGE_DRIVER');
   if (localDriver && (endpoint || bucket)) fail('PRIVATE_STORAGE_DRIVER/OBJECT_STORAGE');
   if (!localDriver && env.PRIVATE_STORAGE_ROOT) fail('PRIVATE_STORAGE_ROOT');
+  if (!localDriver && env.PRIVATE_STORAGE_TRUST_ROOT) fail('PRIVATE_STORAGE_TRUST_ROOT');
   let privateStorageRoot = null;
+  let privateStorageTrustRoot = null;
   let storageAccount = null;
   let storageAccountSid = null;
   let storageExtraSids = Object.freeze([]);
@@ -71,6 +73,18 @@ export function loadConfig(env = process.env) {
     const forbidden = [resolve(projectRoot, 'frontend'), resolve(projectRoot, 'backend'),
       resolve(projectRoot, 'data/postgres'), resolve(projectRoot, 'data/backups')];
     if (privateStorageRoot === projectRoot || forbidden.some(dir => under(privateStorageRoot, dir))) fail('PRIVATE_STORAGE_ROOT');
+    // Optional trusted storage boundary: the guard chain stops at (and always
+    // includes) this directory, which must itself be hardened. Ancestors above
+    // the boundary stay unvalidated: actors there can at most remove or rename
+    // the whole store (availability), never inject or read content. The
+    // boundary must be a real directory, an ancestor of the storage root and
+    // never a volume root (a volume root would guard exactly what the default
+    // already guards, so pretending to trust it gains nothing).
+    if (env.PRIVATE_STORAGE_TRUST_ROOT) {
+      privateStorageTrustRoot = resolve(projectRoot, env.PRIVATE_STORAGE_TRUST_ROOT);
+      if (!under(privateStorageRoot, privateStorageTrustRoot)) fail('PRIVATE_STORAGE_TRUST_ROOT');
+      if (privateStorageTrustRoot === parse(privateStorageTrustRoot).root) fail('PRIVATE_STORAGE_TRUST_ROOT');
+    }
     // Dedicated Windows service account (or its SID). The ACL check fails closed
     // unless it equals the running process identity and owns the root.
     if (!env.PRIVATE_STORAGE_ACCOUNT || !/^[^\s\x00-\x1f]{1,128}$/.test(env.PRIVATE_STORAGE_ACCOUNT)) fail('PRIVATE_STORAGE_ACCOUNT');
@@ -102,5 +116,5 @@ export function loadConfig(env = process.env) {
       (localDriver ? (!privateStorageRoot || !storageAccount) : !endpoint))) fail('production dependencies');
   return Object.freeze({ environment, port, host, mainOrigin, gameOrigin,
     databaseUrl, databaseTls, storage: Object.freeze({ driver: storageDriver, endpoint, bucket, root: privateStorageRoot,
-      account: storageAccount, accountSid: storageAccountSid, extraSids: storageExtraSids }), submissionsRoot:resolve(projectRoot,env.SUBMISSIONS_ROOT || 'data/submissions'), exportsRoot:resolve(projectRoot,env.EXPORTS_ROOT || 'data/exports'), sessionSecret, localMailPreview,localGames,uploadLimits,scannerPort,gameLoadTimeout,submissionDeadline });
+      trustRoot: privateStorageTrustRoot, account: storageAccount, accountSid: storageAccountSid, extraSids: storageExtraSids }), submissionsRoot:resolve(projectRoot,env.SUBMISSIONS_ROOT || 'data/submissions'), exportsRoot:resolve(projectRoot,env.EXPORTS_ROOT || 'data/exports'), sessionSecret, localMailPreview,localGames,uploadLimits,scannerPort,gameLoadTimeout,submissionDeadline });
 }
