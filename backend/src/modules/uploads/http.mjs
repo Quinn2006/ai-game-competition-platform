@@ -5,7 +5,7 @@ import { AppError, publicError } from '../../platform/errors.mjs';
 import { inspectZip, defaultLimits } from './zip.mjs';
 import QRCode from 'qrcode';
 
-const assets = new Map([['/studio',['studio.html','text/html']],['/play',['play.html','text/html']],['/games/ui.mjs',['games.mjs','text/javascript']],['/games/style.css',['games.css','text/css']]]);
+const assets = new Map([['/studio',['studio.html','text/html']],['/admin/reviews',['studio.html','text/html']],['/play',['play.html','text/html']],['/games/ui.mjs',['games.mjs','text/javascript']],['/games/style.css',['games.css','text/css']]]);
 const mime = { html:'text/html',js:'text/javascript',css:'text/css',json:'application/json',svg:'image/svg+xml',png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',gif:'image/gif',webp:'image/webp',ico:'image/x-icon',mp3:'audio/mpeg',ogg:'audio/ogg',wav:'audio/wav',m4a:'audio/mp4',mp4:'video/mp4',webm:'video/webm',woff:'font/woff',woff2:'font/woff2',ttf:'font/ttf',wasm:'application/wasm',txt:'text/plain' };
 const fail = (code,status=400) => { throw new AppError(code,status,'请求无法完成'); };
 async function body(req,max) {

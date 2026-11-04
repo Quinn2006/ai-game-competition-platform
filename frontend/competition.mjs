@@ -6,7 +6,7 @@ function table(parent,rows,columns){if(!rows.length){parent.append(el('p','暂�
 function field(f,name,label,type='text',options){const l=el('label',label),input=el(options?'select':type==='textarea'?'textarea':'input');input.name=name;if(!options&&type!=='textarea')input.type=type;if(options)for(const [value,text]of options){const o=el('option',text);o.value=value;input.append(o);}if(type!=='checkbox')input.required=true;l.append(input);f.append(l);return input;}
 function form(parent,title,action,fields,{defaults={},sensitive=false,onSuccess,read=false}={}){
  const boundContestId=current?.id;
- const detail=el('details'),summary=el('summary',title),f=el('form');detail.append(summary,f);parent.append(detail);
+ const detail=el('details'),summary=el('summary',title),f=el('form');detail.open=['register','invite-preview','join','invite','submit','score','create'].includes(action);detail.append(summary,f);parent.append(detail);
  for(const [name,label,type,options]of fields)field(f,name,label,type,options);
  if(sensitive){field(f,'password','管理员密码','password').autocomplete='current-password';field(f,'code','验证器当前验证码').autocomplete='one-time-code';field(f,'confirm','确认执行此操作','checkbox').required=true;}
  if(action==='publish'){

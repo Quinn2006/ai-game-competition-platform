@@ -28,6 +28,11 @@ export async function uploadCases(database){
   await assert.rejects(run('upload',{...input,licensed:false},owner,bytes),{code:'LICENSE_REQUIRED'});
   await assert.rejects(run('upload',{...input,domains:['https://assets.example.com']},owner,bytes),{code:'NETWORK_REQUIRES_APPROVED_WORK'});
   const v1=await run('upload',input,owner,bytes);assert.equal(scans,3);assert.equal(v1.findings[0].kind,'dynamic-code');
+  assert.equal((await run('list',{},admin)).works.length,0,'admin studio must not include others works');
+  assert.equal((await run('list',{},owner)).works.some(w=>w.id===workId),true);
+  assert.equal((await run('list',{scope:'review'},admin)).works.some(w=>w.id===workId),true);
+  await assert.rejects(run('list',{scope:'review'},owner),{code:'FORBIDDEN'});
+  await assert.rejects(run('list',{scope:'unknown'},admin),{code:'INVALID_SCOPE'});
   await assert.rejects(run('upload',input,owner,bytes),{code:'WITHDRAW_REQUIRED'});
   await assert.rejects(run('claim',{workId,versionId:v1.id}),{code:'FORBIDDEN'});
   await run('claim',{workId,versionId:v1.id},admin);
@@ -35,6 +40,7 @@ export async function uploadCases(database){
   await assert.rejects(run('decide',{workId,versionId:v1.id,status:'approved',reason:'Checked'},admin),{code:'REVIEW_REQUIRED'});
   await run('decide',{workId,versionId:v1.id,status:'approved',reason:'Checked all findings',findingsReviewed:true},admin);
   assert.equal((await service.published(workId)).id,v1.id);
+  assert.equal((await run('list',{scope:'review'},admin)).works.some(w=>w.id===workId),false);
   await assert.rejects(database.query("UPDATE platform.game_versions SET metadata='{}' WHERE id=$1",[v1.id]),/immutable/);
   const v2=await run('upload',{...input,domains:['https://assets.example.com']},owner,bytes);
   assert.equal((await service.published(workId)).id,v1.id);

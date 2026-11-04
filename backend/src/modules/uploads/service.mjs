@@ -41,7 +41,14 @@ export function createUploadService({ database, identity, storage, scan, limits 
       if (action === 'upload') uploading = true;
       try {
         return await identity.authorized(context, async (c, user) => {
-          if (action === 'list') return { works: (await c.query(user.roles.includes('admin') ? 'SELECT w.*,EXISTS(SELECT 1 FROM platform.operations_hidden h WHERE h.work_id=w.id) AS hidden,COALESCE(p.featured,false) AS featured FROM platform.works w LEFT JOIN platform.work_profiles p ON p.work_id=w.id ORDER BY w.created_at DESC LIMIT 100' : 'SELECT w.*,EXISTS(SELECT 1 FROM platform.operations_hidden h WHERE h.work_id=w.id) AS hidden,COALESCE(p.featured,false) AS featured FROM platform.works w LEFT JOIN platform.work_profiles p ON p.work_id=w.id WHERE w.owner_id=$1 ORDER BY w.created_at DESC LIMIT 100', user.roles.includes('admin') ? [] : [user.id])).rows };
+          if (action === 'list') {
+            const scope=input.scope??'mine';if(!['mine','review'].includes(scope))fail('INVALID_SCOPE');
+            if(scope==='review')admin(user);
+            return {works:(await c.query(`SELECT w.*,EXISTS(SELECT 1 FROM platform.operations_hidden h WHERE h.work_id=w.id) AS hidden,COALESCE(p.featured,false) AS featured
+              FROM platform.works w LEFT JOIN platform.work_profiles p ON p.work_id=w.id
+              WHERE ${scope==='review'?"EXISTS(SELECT 1 FROM platform.game_versions v WHERE v.work_id=w.id AND v.status IN ('pending','reviewing') AND NOT v.withdrawn AND v.scan_status='clean')":'w.owner_id=$1'}
+              ORDER BY w.created_at DESC LIMIT 100`,scope==='review'?[]:[user.id])).rows};
+          }
           if (action === 'create') {
             if (typeof input.title !== 'string' || !input.title.trim() || input.title.length > 200) fail('INVALID_TITLE');
             const id = randomUUID();

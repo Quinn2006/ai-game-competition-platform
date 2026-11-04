@@ -1,9 +1,9 @@
 <!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>作品工作台</title><link rel="stylesheet" href="/games/style.css"><link rel="stylesheet" href="/catalog/campus.css"><script type="module" src="/games/ui.mjs"></script>
 <nav class="campus-nav" aria-label="平台导航"><a class="campus-brand" href="/">小游戏实验场<span>广大校园 · AI 创作与交流</span></a><div><a href="/">发现</a><a href="/competitions">比赛中心</a><a href="/studio">创作台</a><a href="/favorites">收藏</a><a href="/account">账号</a><a href="/help">帮助</a></div></nav><header class="campus-page-heading"><p class="campus-kicker">CREATE / TEST / SHARE</p><h1>作品工作台</h1><p>从校园灵感到可玩的作品，在这里管理你的每一次迭代。</p></header><main>
 <p id="notice" role="status" aria-live="polite">正在读取作品…</p>
-<section><p class="campus-kicker">01 / 开始创作</p><h2>为你的灵感起个名字</h2><form id="create"><label>作品名称<input name="title" required maxlength="200"></label><button>创建作品</button></form></section>
-<section><p class="campus-kicker">02 / 作品管理</p><h2>我的作品 / 管理审核</h2><button id="refresh">刷新</button><div id="works"></div></section>
-<section id="editor" hidden><h2 id="work-title"></h2><a id="public-link">查看公开试玩</a>
+<section id="create-panel"><p class="campus-kicker">01 / 开始创作</p><h2>为你的灵感起个名字</h2><form id="create"><label>作品名称<input name="title" required maxlength="200"></label><button>创建作品</button></form></section>
+<section id="works-panel"><p class="campus-kicker">02 / 作品管理</p><h2 id="works-heading">我的作品</h2><p id="works-help">这里只显示你创建的作品。点击“编辑作品”上传版本和查看审核进度。</p><a id="review-entry" href="/admin/reviews" hidden>前往运营后台 · 作品审核</a><button id="refresh">刷新</button><div id="works"></div></section>
+<section id="editor" hidden tabindex="-1"><h2 id="work-title"></h2><a id="public-link">查看公开试玩</a>
 <form id="upload"><label>游戏 ZIP<input name="file" type="file" accept=".zip" required></label><p>根目录须包含 index.html。默认限额：100 MB / 解压 300 MB / 500 个条目。待审核或审核中须先撤回。</p>
 <label>屏幕方向<select name="orientation"><option value="landscape">横屏</option><option value="portrait">竖屏</option></select></label>
 <label>存档版本<input name="saveVersion" value="v1" pattern="[a-zA-Z0-9_-]{1,40}" required></label>
