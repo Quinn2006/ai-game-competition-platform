@@ -9,7 +9,7 @@ export async function eraseChats(c,accountId=null){
 }
 export async function lifecycleAction(c,u,action,input){
  if(action==='chat-history')return {items:(await c.query('SELECT id,question,answer,pending,ended_at FROM platform.support_chats WHERE account_id=$1 ORDER BY ended_at DESC LIMIT 100',[u.id])).rows};
- if(action==='chat-delete'){await eraseChats(c,u.id);return {ok:true,message:'普通对话已清空；供应商删除将重试直至成功。正式投诉按结案后一年保留。'};}
+ if(action==='chat-delete'){await eraseChats(c,u.id);return {ok:true,message:'普通对话已清空；已登记的供应商删除任务将继续重试。第三方日志按服务商政策留存。正式投诉按结案后一年保留。'};}
  if(action==='complaint'){
   if(!uuid(input.id))fail('INVALID_ID');const reason=textField(input.reason,2000);
   const r=(await c.query('SELECT * FROM platform.support_chats WHERE id=$1 AND account_id=$2 FOR UPDATE',[input.id,u.id])).rows[0];if(!r)fail('NOT_FOUND',404);if(r.pending)fail('CHAT_PENDING',409);

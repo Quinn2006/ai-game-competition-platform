@@ -1,3 +1,4 @@
+import {providerInput,publicProvider,providerAnswer} from './ai-provider.mjs';
 import {eraseChats,lifecycleAction,cleanupLifecycle} from './lifecycle.mjs';
 import { randomUUID } from 'node:crypto';
 import { fail,uuid,textField,dateRange,csv,excelXml } from './policy.mjs';
@@ -8,7 +9,7 @@ export const deletionParticipant={async check(){},async finalize(c,id){
  await eraseChats(c,id);
  for(const table of ['notifications','support_feedback'])await c.query(`DELETE FROM platform.${table} WHERE account_id=$1`,[id]);
 }};
-export function createOperationsService({database,identity,mail,ai,contactEmail='',clock=()=>Date.now(),siteOnly=true}){
+export function createOperationsService({database,identity,mail,ai,contactEmail='',clock=()=>Date.now(),siteOnly=true,apiSecret,aiTransport}){
  if(ai&&(!ai.privacy||ai.privacy.training!==false||ai.privacy.retentionDays>90||!Number.isInteger(ai.privacy.retentionDays)||ai.privacy.retentionDays<0||typeof ai.delete!=='function'))throw Error('AI privacy contract required');
  const audit=(c,u,action,target,context,detail={})=>c.query('INSERT INTO platform.operations_events(id,actor_id,action,target_id,request_id,detail) VALUES($1,$2,$3,$4,$5,$6)',[randomUUID(),u?.id??null,action,target,context.requestId,detail]);
  const admin=u=>{if(!u.roles.includes('admin'))fail('FORBIDDEN',403);};
@@ -42,11 +43,11 @@ export function createOperationsService({database,identity,mail,ai,contactEmail=
   if(state&&!['active','pending','deleting','deleted','disabled'].includes(state)||role&&!['admin','judge'].includes(role))fail('INVALID_FILTER');
   const range=dateRange(input),from=input.from?range[0]:null,to=input.to?range[1]:null,offset=Number(input.offset??0);if(!Number.isSafeInteger(offset)||offset<0||offset>100000)fail('INVALID_OFFSET');
   const rows=(await c.query(`SELECT id,nickname,status,roles,created_at FROM platform.accounts WHERE nickname ILIKE $1 ESCAPE '\\' AND ($2='' OR status=$2) AND ($3='' OR $3=ANY(roles)) AND ($4::timestamptz IS NULL OR created_at>=$4) AND ($5::timestamptz IS NULL OR created_at<$5) ORDER BY created_at DESC,id LIMIT 101 OFFSET $6`,['%'+q.replace(/[\\%_]/g,'\\$&')+'%',state,role,from,to,offset])).rows;return {items:rows.slice(0,100),nextOffset:rows.length>100?offset+100:null};}
- const dangerous=new Set(['batch','announcement-save','announcement-action','settings','sensitive-edit']);
+ const dangerous=new Set(['ai-save','ai-test','batch','announcement-save','announcement-action','settings','sensitive-edit']);
  const service={
   announcements,
   notifyInTransaction:notify,
-  async status(){return {platform:'available',mail:siteOnly?'disabled-site-only':mail?'adapter-configured':'unconfigured',ai:ai?'adapter-configured':'unconfigured',contactEmail};},
+  async status(){const configured=apiSecret&&database?(await database.query('SELECT enabled FROM platform.support_provider WHERE id')).rows[0]?.enabled:false;return {platform:'available',mail:siteOnly?'disabled-site-only':mail?'adapter-configured':'unconfigured',ai:ai||configured?'adapter-configured':'unconfigured',contactEmail};},
   // Internal integration only; never accepts arbitrary recipients from a public HTTP route.
   async notifyBusiness(event){if(!Array.isArray(event.recipients)||event.recipients.some(id=>!uuid(id))||!event.key)fail('INVALID_EVENT');await transaction(c=>notify(c,{...event,title:textField(event.title,100),body:textField(event.body,10000)}));},
   async run(action,input,context){
@@ -54,12 +55,17 @@ export function createOperationsService({database,identity,mail,ai,contactEmail=
    if(action==='status')return service.status();
    if(!identity)fail('AUTHENTICATION_REQUIRED',401,'请先登录');
    if(dangerous.has(action)&&(!uuid(input.resourceId)||input.confirmed!==true||!input.proof))fail('CONFIRMATION_REQUIRED',403,'需要二次确认及管理员再验证');
+   if(action==='ai-test'){
+    const config=await identity.authorized(context,async(c,u)=>{admin(u);const old=(await c.query('SELECT * FROM platform.support_provider WHERE id')).rows[0];return providerInput(input,old,apiSecret);},input.proof,input.resourceId);
+    try{await providerAnswer(config,apiSecret,'请回复连接成功',aiTransport);return {ok:true,message:'连接成功，模型已返回有效文本。'};}catch{fail('AI_TEST_FAILED',502,'连接失败，请检查 API 地址、密钥、模型名称及服务端网络');}
+   }
    if(action==='chat'){
     const question=textField(input.question,2000);
     // Provider receives public help only, with no tools, identity, database or admin context.
-    const ticket=await identity.authorized(context,async(c,u)=>{await c.query('SELECT pg_advisory_xact_lock(hashtext($1))',['support:'+u.id]);const n=(await c.query("SELECT count(*) FROM platform.support_chats WHERE account_id=$1 AND ended_at>CURRENT_TIMESTAMP-interval '1 minute'",[u.id])).rows[0];if(Number(n.count)>=5)fail('RATE_LIMITED',429);const id=randomUUID();await c.query('INSERT INTO platform.support_chats(id,account_id,question,answer,provider_key,pending) VALUES($1,$2,$3,$4,$5,true)',[id,u.id,question,'客服请求处理中',ai?id:null]);return {id,userId:u.id};});
+    const ticket=await identity.authorized(context,async(c,u)=>{await c.query('SELECT pg_advisory_xact_lock(hashtext($1))',['support:'+u.id]);const n=(await c.query("SELECT count(*) FROM platform.support_chats WHERE account_id=$1 AND ended_at>CURRENT_TIMESTAMP-interval '1 minute'",[u.id])).rows[0];if(Number(n.count)>=5)fail('RATE_LIMITED',429);const id=randomUUID();await c.query('INSERT INTO platform.support_chats(id,account_id,question,answer,provider_key,pending) VALUES($1,$2,$3,$4,$5,true)',[id,u.id,question,'客服请求处理中',ai?id:null]);const provider=apiSecret?(await c.query('SELECT * FROM platform.support_provider WHERE id')).rows[0]:null;return {id,userId:u.id,provider};});
     let answer='AI 客服暂不可用。请查看帮助中心或提交反馈。',available=false;
-    if(ai){try{answer=textField(await ai.answer({requestId:ticket.id,question,knowledge:'上传已授权的小游戏ZIP；审核通过后公开；账号问题通过反馈联系管理员。',signal:AbortSignal.timeout(15000)}),10000);available=true;}catch{answer='AI 客服暂时无法回答，请提交反馈联系管理员。';}}
+    if(ticket.provider?.enabled){try{answer=await providerAnswer(ticket.provider,apiSecret,question,aiTransport);available=true;}catch{answer='AI 客服暂时无法回答，请提交反馈联系管理员。';}}
+    else if(ai){try{answer=textField(await ai.answer({requestId:ticket.id,question,knowledge:'上传已授权的小游戏ZIP；审核通过后公开；账号问题通过反馈联系管理员。',signal:AbortSignal.timeout(15000)}),10000);available=true;}catch{answer='AI 客服暂时无法回答，请提交反馈联系管理员。';}}
     if(contactEmail)answer+=' 管理员邮箱：'+contactEmail;
     const saved=await database.query('UPDATE platform.support_chats SET answer=$2,ended_at=$3,pending=false WHERE id=$1 AND account_id=$4',[ticket.id,answer,new Date(clock()),ticket.userId]);
     // A deletion or account closure during a request must not resurrect local or remote content.
@@ -81,6 +87,12 @@ export function createOperationsService({database,identity,mail,ai,contactEmail=
     }
     if(action==='my-feedback')return {items:(await c.query('SELECT id,body,state,reply,created_at FROM platform.support_feedback WHERE account_id=$1 ORDER BY created_at DESC LIMIT 100',[u.id])).rows};
     admin(u);
+    if(action==='ai-config')return {...publicProvider((await c.query('SELECT * FROM platform.support_provider WHERE id')).rows[0]),available:Boolean(apiSecret)};
+    if(action==='ai-save'){
+     const old=(await c.query('SELECT * FROM platform.support_provider WHERE id FOR UPDATE')).rows[0],value=providerInput(input,old,apiSecret);
+     await c.query('UPDATE platform.support_provider SET endpoint=$1,model=$2,key_cipher=$3,enabled=$4,updated_at=CURRENT_TIMESTAMP WHERE id',[value.endpoint,value.model,value.key_cipher,value.enabled]);
+     await audit(c,u,'ai_provider_updated',input.resourceId,context,{enabled:value.enabled});return {ok:true};
+    }
     if(action==='dashboard')return report(c,input);
     if(action==='users')return users(c,input);
     if(action==='works')return {items:(await c.query(`SELECT w.id,COALESCE(p.title,w.title) AS title,w.published_version,h.work_id IS NOT NULL AS hidden,COALESCE(p.featured,false) AS featured FROM platform.works w LEFT JOIN platform.work_profiles p ON p.work_id=w.id LEFT JOIN platform.operations_hidden h ON h.work_id=w.id ORDER BY w.created_at DESC LIMIT 100`)).rows};

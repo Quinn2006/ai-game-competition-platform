@@ -1,3 +1,4 @@
+import {providerCases} from './provider-cases.mjs';
 import { collectionCases } from './collection-cases.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -27,6 +28,7 @@ test('PostgreSQL: concurrent migration, empty rollback, reapply, audit persisten
     // Identity cases are run after rollback checks because they intentionally retain audit data.
     assert.equal(await databaseReady(database, 'development'), false);
     await assert.rejects(migrate(database, 'development', 'up'), /environment mismatch/);
+    await migrate(database, 'test', 'down'); // AI provider
     await migrate(database, 'test', 'down'); // support lifecycle
     await migrate(database, 'test', 'down'); // phase 7
     await migrate(database, 'test', 'down'); // phase 6
@@ -46,6 +48,7 @@ test('PostgreSQL: concurrent migration, empty rollback, reapply, audit persisten
     assert.equal(result.rows[0].request_id, event.requestId);
     assert.equal(result.rows[0].retention_class, 'general_error_30d');
     assert.ok(result.rows[0].expires_at > result.rows[0].occurred_at);
+    await migrate(database, 'test', 'down'); // AI provider
     await migrate(database, 'test', 'down'); // support lifecycle
     await migrate(database, 'test', 'down'); // phase 7
     await migrate(database, 'test', 'down'); // phase 6
@@ -63,6 +66,7 @@ test('PostgreSQL: concurrent migration, empty rollback, reapply, audit persisten
     assert.equal(security.retention_class, 'security_6m');
     assert.equal(security.correct_expiry, true);
     await assert.rejects(database.query("INSERT INTO platform.security_events (id, action, request_id, outcome) VALUES ($1, 'access.granted', $2, 'failure')", [randomUUID(), randomUUID()]));
+    await migrate(database, 'test', 'down'); // AI provider
     await migrate(database, 'test', 'down'); // support lifecycle
     await migrate(database, 'test', 'down'); // phase 7
     await migrate(database, 'test', 'down'); // phase 6
@@ -75,6 +79,7 @@ test('PostgreSQL: concurrent migration, empty rollback, reapply, audit persisten
     await migrate(database, 'test', 'up');
     assert.equal(await databaseReady(database, 'test'), true);
     await identityCases(database);
+    await migrate(database, 'test', 'down'); // AI provider
     await migrate(database, 'test', 'down'); // support lifecycle
     await migrate(database, 'test', 'down'); // phase 7
     await migrate(database, 'test', 'down'); // phase 6
@@ -85,6 +90,7 @@ test('PostgreSQL: concurrent migration, empty rollback, reapply, audit persisten
     await assert.rejects(migrate(database, 'test', 'down'), /identity data is not empty/);
     await migrate(database, 'test', 'up');
     await uploadCases(database);
+    await migrate(database, 'test', 'down'); // AI provider
     await migrate(database, 'test', 'down'); // support lifecycle
     await migrate(database, 'test', 'down'); // phase 7
     await migrate(database, 'test', 'down'); // phase 6
@@ -93,6 +99,7 @@ test('PostgreSQL: concurrent migration, empty rollback, reapply, audit persisten
     await assert.rejects(migrate(database, 'test', 'down'), /Upload history is not empty/);
     await migrate(database, 'test', 'up');
     await communityCases(database);
+    await migrate(database, 'test', 'down'); // AI provider
     await migrate(database, 'test', 'down'); // support lifecycle
     await migrate(database, 'test', 'down'); // phase 7
     await assert.rejects(migrate(database, 'test', 'down'), /Competition history is not empty/);
@@ -100,6 +107,7 @@ test('PostgreSQL: concurrent migration, empty rollback, reapply, audit persisten
     await operationsCases(database);
     await localIdentityCases(database);
     await collectionCases(database);
+    await providerCases(database);
     await database.query("UPDATE public.schema_migrations SET checksum = 'tampered' WHERE id = '001_foundation'");
     await assert.rejects(migrate(database, 'test', 'up'), /history mismatch/);
     await assert.rejects(databaseReady(database, 'test'), /history mismatch/);

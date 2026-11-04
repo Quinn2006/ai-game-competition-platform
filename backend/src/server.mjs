@@ -29,7 +29,7 @@ try {
     : config.storage.driver === 'local' ? createPrivateStorage(config, createProductionLocalStorageDriver(config))
     : createPrivateStorage(config);
   const uploads = config.localGames && identity ? createUploadService({database,identity,storage,scan:createScanner({port:config.scannerPort}),limits:config.uploadLimits,deadline:config.submissionDeadline}) : null;
-  const operations = database ? createOperationsService({database,identity,contactEmail:process.env.SUPPORT_EMAIL??''}) : null;
+  const operations = database ? createOperationsService({database,identity,apiSecret:config.sessionSecret,contactEmail:process.env.SUPPORT_EMAIL??''}) : null;
   const competition = database && identity ? createCompetitionService({database,identity,onEvent:competitionNotifier(operations)}) : null;
   const games = createGameHttp({config,uploads,storage,competition,limits:config.uploadLimits,loadTimeout:config.gameLoadTimeout});
   const discovery = database ? createDiscoveryService({ database, identity, storage:config.localGames?storage:undefined }) : null;
