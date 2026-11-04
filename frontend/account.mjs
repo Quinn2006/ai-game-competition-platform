@@ -8,21 +8,22 @@ async function api(action, data) {
   return result;
 }
 function show(name) {
-  if(['admin','roles'].includes(name)&&!currentUser?.roles.includes('admin'))name=currentUser?'profile':'login';
+  if(['roles','admin'].includes(name)&&!currentUser?.roles.includes('admin'))name=currentUser?'profile':'login';
+  document.dispatchEvent(new CustomEvent('platform-user',{detail:currentUser}));
   if (currentUser?.roles.includes('admin') && !currentUser.mfaEnabled && ['profile','admin','roles','delete'].includes(name)) name='security';
   const template = document.getElementById(name);
   if (!template || !(template instanceof HTMLTemplateElement)) return;
   content.replaceChildren(template.content.cloneNode(true));
-  const nav=document.querySelector('#nav');nav.replaceChildren();
-  const views=currentUser?[['profile','个人资料'],['security','账号安全'],...(currentUser.roles.includes('admin')?[['roles','账号角色管理'],['admin','资料核查']]:[]),['delete','注销账号']]:[['login','登录'],['register','注册'],['forgot','找回密码']];
-  for(const [view,label]of views){const b=document.createElement('button');b.dataset.view=view;b.textContent=label;nav.append(b);}
-
+  document.querySelector('#nav').hidden = currentUser !== null;
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('selected', b.dataset.view === name));
   if (name === 'profile' && currentUser) {
     content.querySelector('#email').textContent = currentUser.email;
     content.querySelector('[name=nickname]').value = currentUser.nickname;
     content.querySelector('[name=bio]').value = currentUser.bio;
-
+    if (currentUser.roles.includes('admin')) {
+      const button = document.createElement('button'); button.textContent = '管理员资料核查'; button.dataset.view = 'admin'; content.querySelector('#admin-entry').append(button);
+      const roles = document.createElement('button'); roles.textContent='账号角色管理';roles.dataset.view='roles';content.querySelector('#admin-entry').append(roles);
+    }
   }
   if (name === 'security' && currentUser?.mfaEnabled) { content.querySelector('form').remove(); const p=document.createElement('p');p.textContent='两步验证已开启。请妥善保管恢复码。';content.querySelector('#enroll').append(p); }
 }

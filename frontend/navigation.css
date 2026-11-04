@@ -1,0 +1,11 @@
+/* One shared top-level navigation, independent of each page's content styles. */
+.platform-nav,.platform-nav *{box-sizing:border-box}
+.platform-nav{box-sizing:border-box;display:block;width:100%;max-width:1280px;margin:0 auto;padding:20px 28px 0;border-bottom:1px solid #dce3d7;color:#203e36;font-family:Inter,"Microsoft YaHei",system-ui,sans-serif;line-height:1.5}
+.platform-nav .platform-brand{display:block;width:max-content;max-width:100%;font-size:22px;font-weight:800;line-height:1.4;text-decoration:none;color:#244f40;margin:0 0 14px;padding:0;border:0;min-height:0}
+.platform-nav .platform-brand span{display:block;font-size:11px;font-weight:400;letter-spacing:2px;margin-top:5px;color:#596e60}
+.platform-nav .platform-links{display:flex;flex-flow:row nowrap;align-items:center;gap:0 16px;min-width:0;max-width:100%;overflow-x:auto;overscroll-behavior-x:contain;padding:4px 3px 8px;scrollbar-width:thin;scrollbar-color:#93aa99 #edf2e8}
+.platform-nav .platform-links>a{display:inline-flex;flex:0 0 auto;align-items:center;white-space:nowrap;min-height:44px;padding:5px 0;margin:0;border-bottom:2px solid transparent;font-size:14px;line-height:1.5;text-decoration:none;color:#244f40}
+.platform-nav .platform-links>a:hover,.platform-nav .platform-links>a[aria-current=page]{color:#963f31;border-bottom-color:#963f31}
+.platform-nav :focus-visible{outline:3px solid #9b5c24;outline-offset:2px}
+.platform-nav[hidden]{display:none!important}
+@media(max-width:600px){.platform-nav{padding:16px 16px 0}.platform-nav .platform-links{gap:0 18px}.platform-nav .platform-brand{font-size:20px}}

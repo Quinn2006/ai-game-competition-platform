@@ -14,9 +14,12 @@ function panel(title){const p=el('section');el('h2',title,p);return p;}
 function managementCard(parent,title,description,actions,state=''){
  const card=el('article',undefined,parent);card.className='management-card '+state;
  el('h3',title,card);el('p',description,card);
- const menu=el('div',undefined,card);menu.className='management-menu';
+ const menu=el('div',undefined,card);menu.className='management-menu';menu.hidden=true;
+ const toggle=button(card,'管理',()=>{menu.hidden=!menu.hidden;toggle.setAttribute('aria-expanded',String(!menu.hidden));});
+ toggle.setAttribute('aria-expanded','false');
  for(const [label,action]of actions)button(menu,label,action);
- card.oncontextmenu=e=>{e.preventDefault();menu.querySelector('button')?.focus();};
+ card.oncontextmenu=e=>{e.preventDefault();menu.hidden=false;toggle.setAttribute('aria-expanded','true');menu.querySelector('button')?.focus();};
+ card.onkeydown=e=>{if(e.key==='Escape'){menu.hidden=true;toggle.setAttribute('aria-expanded','false');toggle.focus();}};
  return card;
 }
 function userBrowser(parent,stateForm){
@@ -40,13 +43,12 @@ async function notifications(offset=0){const r=await api('notifications?offset='
 async function announcements(){const r=await api('announcements');for(const n of r.items){const a=el('article');if(n.importance==='urgent')a.className='urgent';el('h2',(n.pinned?'置顶 · ':'')+n.title,a);el('p',n.body,a);if(n.image){const img=el('img',undefined,a);img.src=n.image;img.alt='公告图片';}el('p',new Date(n.publish_at).toLocaleString(),a);}if(!r.items.length)el('p','暂无已发布公告。');}
 async function feedback(){const f=form(content,'提交反馈',async v=>{await api('feedback',v);await load();});field(f,'body','问题或建议（最多 2000 字）','textarea').maxLength=2000;submit(f,'提交反馈');const r=await api('my-feedback');table(content,r.items,[['body','反馈'],['state','状态'],['reply','回复']]);}
 async function dashboard(){
- const quick=el('nav');quick.setAttribute('aria-label','管理快捷入口');for(const [label,href]of [['作品审核','/admin/reviews'],['比赛管理','/competitions#admin'],['账号角色管理','/account#roles']]){const a=el('a',label,quick);a.href=href;}
  const filters=el('form');filters.className='filters';field(filters,'from','开始日期','date');field(filters,'to','结束日期','date');submit(filters,'查询报表');const output=el('div');
  const render=async()=>{const r=await api('dashboard?'+new URLSearchParams(values(filters)));output.replaceChildren();const cards=el('div',undefined,output);cards.className='metrics';for(const[k,label]of [['users','有效用户'],['works','作品总数'],['published','已发布'],['plays','累计有效试玩'],['likes','有效点赞'],['comments','评论'],['competitions','比赛'],['participants','参赛成员'],['reviews','有效评分']]){const c=el('div',label,cards);c.className='metric';el('strong',r.totals[k],c);}el('h2','每日新增用户',output);const chart=document.createElementNS('http://www.w3.org/2000/svg','svg');chart.setAttribute('viewBox','0 0 900 170');chart.setAttribute('role','img');chart.setAttribute('aria-label','每日新增用户柱状图，具体数值见下方数据表');chart.classList.add('chart');output.append(chart);const max=Math.max(1,...r.days.map(d=>Number(d.users)));r.days.forEach((d,i)=>{const bar=document.createElementNS(chart.namespaceURI,'rect');const h=Math.max(2,Number(d.users)/max*140);bar.setAttribute('x',i*900/r.days.length);bar.setAttribute('y',150-h);bar.setAttribute('width',Math.max(1,900/r.days.length-3));bar.setAttribute('height',h);bar.setAttribute('fill','#237762');const title=document.createElementNS(chart.namespaceURI,'title');title.textContent=d.day+'：'+d.users+' 人';bar.append(title);chart.append(bar);});const detail=el('details',undefined,output);el('summary','查看每日明细（'+r.days.length+' 天）',detail);table(detail,r.days,[['day','日期'],['users','新增用户'],['works','新增作品'],['plays','有效试玩']]);r.limitations.forEach(s=>el('p',s,output));};filters.onsubmit=e=>{e.preventDefault();busy(e.submitter,render);};await render();
  const actions=el('div');actions.className='actions';for(const format of ['csv','xml'])button(actions,'导出日报 '+(format==='xml'?'Excel XML':'CSV'),()=>download({...values(filters),kind:'daily',format}));
  const users=panel('用户搜索与账号管理'),search=form(users,'筛选用户',async v=>{const r=await api('users?'+new URLSearchParams(v));results.replaceChildren();table(results,r.items,[['id','账号 ID'],['nickname','昵称'],['status','状态'],['roles','角色'],['created_at','注册日期']]);});field(search,'q','昵称');select(search,'status','账号状态',[['','全部'],['active','正常'],['pending','待验证'],['disabled','禁用'],['deleting','注销中'],['deleted','已注销']]);select(search,'role','角色',[['','全部'],['admin','管理员'],['judge','评委']]);field(search,'from','注册开始日期','date');field(search,'to','注册结束日期','date');submit(search,'搜索');const results=el('div',undefined,users);for(const format of ['csv','xml'])button(users,'导出用户 '+format,()=>download({...values(search),kind:'users',format}));el('p','每次最多 100 条；导出不含邮箱、学号等敏感资料。',users);
  const state=form(users,'修改账号状态',async v=>danger('sensitive-edit',v,'修改指定账号状态并注销其现有会话。'));field(state,'resourceId','账号 ID').required=true;select(state,'status','状态',[['disabled','禁用'],['active','恢复正常']]);submit(state,'验证并修改');users.insertBefore(userBrowser(users,state),search);
- const works=panel('作品管理'),wr=await api('works');el('p','直接点击卡片上的操作按钮。绿色：正常；金色：精选；红色：已下架。',works);
+ const works=panel('作品管理'),wr=await api('works');el('p','右键作品卡片或点击“管理”。绿色：正常；金色：精选；红色：已下架。',works);
  const grid=el('div',undefined,works);grid.className='management-grid';
  for(const w of wr.items){const actions=(w.hidden?[['restore','恢复']]:[['hide','下架']]).concat([[w.featured?'unfeature':'feature',w.featured?'取消精选':'设为精选']]);
   const card=managementCard(grid,w.title,w.hidden?'已下架':w.featured?'精选':'正常',actions.map(([operation,label])=>[label,async()=>{await danger('batch',{ids:[w.id],operation},label+'：'+w.title+'。');await load();}]),w.hidden?'work-hidden':w.featured?'work-featured':'work-normal');const review=el('a','查看版本与审核',card);review.href='/admin/reviews?work='+encodeURIComponent(w.id);
