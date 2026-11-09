@@ -59,7 +59,8 @@ export function createUploadService({ database, identity, storage, scan, limits 
           const work = await workFor(c,input.workId);
           if (action === 'detail') {
             if (work.owner_id !== user.id) admin(user);
-            return { work, versions: (await c.query('SELECT * FROM platform.game_versions WHERE work_id=$1 ORDER BY created_at DESC', [work.id])).rows,
+            return { work, profile: (await c.query('SELECT * FROM platform.work_profiles WHERE work_id=$1', [work.id])).rows[0] ?? null,
+              versions: (await c.query('SELECT * FROM platform.game_versions WHERE work_id=$1 ORDER BY created_at DESC', [work.id])).rows,
               events: (await c.query('SELECT action,version_id,detail,occurred_at FROM platform.upload_events WHERE work_id=$1 ORDER BY occurred_at DESC', [work.id])).rows };
           }
           if (action === 'upload') {
@@ -108,6 +109,9 @@ export function createUploadService({ database, identity, storage, scan, limits 
               if (typeof input.reason !== 'string' || !input.reason.trim() || input.reason.length > 4000) fail('REASON_REQUIRED');
               if (input.status === 'approved') {
                 if (version.scan_status !== 'clean' || input.findingsReviewed !== true) fail('REVIEW_REQUIRED');
+                if (!(await c.query('SELECT work_id FROM platform.work_profiles WHERE work_id=$1', [work.id])).rowCount) {
+                  throw new AppError('PUBLIC_PROFILE_REQUIRED',409,'请先由作者补齐公开资料（作品名称、简介、操作说明和分类），再审核发布');
+                }
                 await storage.put('release',version.id,await storage.get('review',version.id));
                 await c.query('UPDATE platform.works SET published_version=$2 WHERE id=$1',[work.id,version.id]);
               } else if (!['security','structure','content','other'].includes(input.category)) fail('CATEGORY_REQUIRED');
@@ -129,7 +133,7 @@ export function createUploadService({ database, identity, storage, scan, limits 
     },
     async published(workId) {
       if (!uuid(workId)) fail('NOT_FOUND',404);
-      const row = (await database.query("SELECT w.id AS work_id,w.title,v.* FROM platform.works w JOIN platform.game_versions v ON v.id=w.published_version WHERE w.id=$1 AND v.status='approved' AND NOT v.revoked",[workId])).rows[0];
+      const row = (await database.query("SELECT w.id AS work_id,p.title,v.* FROM platform.works w JOIN platform.game_versions v ON v.id=w.published_version AND v.work_id=w.id JOIN platform.work_profiles p ON p.work_id=w.id JOIN platform.accounts a ON a.id=w.owner_id WHERE w.id=$1 AND v.status='approved' AND NOT v.revoked AND NOT v.withdrawn AND v.scan_status='clean' AND a.status='active'",[workId])).rows[0];
       if (!row) fail('NOT_FOUND',404);
       return row;
     },

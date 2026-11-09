@@ -47,9 +47,11 @@ try{
  assert.equal(v.scan,'clean');assert.equal((await request('/api/games/play?work='+work.id)).status,404);
  assert.equal((await request('/api/games/claim',{method:'POST',cookie:author.cookie,body:{workId:work.id,versionId:v.id}})).status,403);
  ok(await request('/api/games/claim',{method:'POST',cookie:admin.cookie,body:{workId:work.id,versionId:v.id}}));
- ok(await request('/api/games/decide',{method:'POST',cookie:admin.cookie,body:{workId:work.id,versionId:v.id,status:'approved',reason:'合成包检查',findingsReviewed:true}}));
+ const decision={method:'POST',cookie:admin.cookie,body:{workId:work.id,versionId:v.id,status:'approved',reason:'合成包检查',findingsReviewed:true}};
+ assert.equal((await request('/api/games/decide',decision)).value.error.code,'PUBLIC_PROFILE_REQUIRED');
  assert.equal((await request('/api/discovery/detail?id='+work.id)).status,404,'missing public profile must stay hidden');
  ok(await request('/api/discovery/edit',{method:'POST',cookie:author.cookie,body:{workId:work.id,title:'联调游戏',summary:'从上传到试玩',instructions:'点击按钮',category:'益智',tags:['联调'],cover:''}}));
+ ok(await request('/api/games/decide',decision));
  const publicWork=ok(await request('/api/discovery/detail?id='+work.id));assert.equal(publicWork.title,'联调游戏');
  assert.ok(ok(await request('/api/discovery/list?q=联调')).items.some(x=>x.id===work.id));
  assert.equal((await request('/api/discovery/edit',{method:'POST',cookie:other.cookie,body:{workId:work.id,title:'越权',summary:'不能改',instructions:'无',category:'益智',tags:[]}})).status,403);

@@ -38,8 +38,14 @@ export async function uploadCases(database){
   await run('claim',{workId,versionId:v1.id},admin);
   await assert.rejects(run('decide',{workId,versionId:v1.id,status:'rejected'},admin),{code:'REASON_REQUIRED'});
   await assert.rejects(run('decide',{workId,versionId:v1.id,status:'approved',reason:'Checked'},admin),{code:'REVIEW_REQUIRED'});
+  await assert.rejects(run('decide',{workId,versionId:v1.id,status:'approved',reason:'Checked',findingsReviewed:true},admin),{code:'PUBLIC_PROFILE_REQUIRED'});
+  assert.equal((await run('detail',{workId})).work.published_version,null);
+  await database.query("INSERT INTO platform.work_profiles(work_id,title,summary,instructions,category) VALUES($1,'Integration game','Upload acceptance','Click to play','其他')",[workId]);
   await run('decide',{workId,versionId:v1.id,status:'approved',reason:'Checked all findings',findingsReviewed:true},admin);
   assert.equal((await service.published(workId)).id,v1.id);
+  await database.query("UPDATE platform.accounts SET status='deleting',deletion_due=CURRENT_TIMESTAMP+interval '7 days' WHERE id=$1",[owner.id]);
+  await assert.rejects(service.published(workId),{code:'NOT_FOUND'});
+  await database.query("UPDATE platform.accounts SET status='active',deletion_due=NULL WHERE id=$1",[owner.id]);
   assert.equal((await run('list',{scope:'review'},admin)).works.some(w=>w.id===workId),false);
   await assert.rejects(database.query("UPDATE platform.game_versions SET metadata='{}' WHERE id=$1",[v1.id]),/immutable/);
   const v2=await run('upload',{...input,domains:['https://assets.example.com']},owner,bytes);

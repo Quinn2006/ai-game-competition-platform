@@ -37,6 +37,7 @@ test('real ClamAV + PostgreSQL: clean/EICAR, authenticated review, real MFA roll
     const service=createUploadService({database,identity,storage:createLocalStorage('tmp/real-scanner-tests/'+randomUUID(),'test'),scan,clock:()=>now});
     const run=(action,input,token=author.sessionToken,bytes)=>service.run(action,input,context(token),bytes);
     const {id:workId}=await run('create',{title:'Real scanner acceptance'});
+    await database.query("INSERT INTO platform.work_profiles(work_id,title,summary,instructions,category) VALUES($1,'Real scanner acceptance','Real ClamAV scan','Click to play','其他')",[workId]);
     const input={workId,licensed:true,orientation:'landscape',saveVersion:'v1',domains:[]};
     const bad=await run('upload',input,author.sessionToken,infected);assert.equal(bad.scan,'infected');
     await assert.rejects(run('claim',{workId,versionId:bad.id},signed.sessionToken),{code:'INVALID_TRANSITION'});

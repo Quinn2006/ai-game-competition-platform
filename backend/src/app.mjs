@@ -16,7 +16,9 @@ export function createApp({ config, database, storage, log, identity, mailbox, g
   const communityHttp = createCommunityHttp({config,community});
   const identityHttp = createIdentityHttp({ config, identity, mailbox });
   const discoveryHttp = createDiscoveryHttp({ config, discovery });
-  return createServer({ requestTimeout: 10000, headersTimeout: 5000, maxHeaderSize: 16384 }, async (req, res) => {
+  // A 100 MB ZIP needs more than ten seconds on ordinary upload connections.
+  // Keep headers bounded; body sizes are still enforced by each route.
+  return createServer({ requestTimeout: 300000, headersTimeout: 5000, maxHeaderSize: 16384 }, async (req, res) => {
     const requestId = randomUUID();
     const start = performance.now();
     let route = 'unmatched';

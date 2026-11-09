@@ -4,11 +4,18 @@
 <section id="create-panel"><p class="campus-kicker">01 / 开始创作</p><h2>为你的灵感起个名字</h2><form id="create"><label>作品名称<input name="title" required maxlength="200"></label><button>创建作品</button></form></section>
 <section id="works-panel"><p class="campus-kicker">02 / 作品管理</p><h2 id="works-heading">我的作品</h2><p id="works-help">这里只显示你创建的作品。点击“编辑作品”上传版本和查看审核进度。</p><a id="review-entry" href="/admin/reviews" hidden>前往运营后台 · 作品审核</a><button id="refresh">刷新</button><div id="works"></div></section>
 <section id="editor" hidden tabindex="-1"><h2 id="work-title"></h2><a id="public-link">查看公开试玩</a>
-<form id="upload"><label>游戏 ZIP<input name="file" type="file" accept=".zip" required></label><p>根目录须包含 index.html。默认限额：100 MB / 解压 300 MB / 500 个条目。待审核或审核中须先撤回。</p>
+<p id="publication-status" role="status"></p>
+<form id="upload"><fieldset id="upload-fields"><legend>上传作品并提交审核</legend>
+<p>填写公开资料 → 上传并扫描 → 管理员审核；审核通过后，所有玩家无需登录即可在发现页查看和游玩。</p>
+<label>公开作品名称<input name="publicTitle" required maxlength="100"></label>
+<label>作品简介<textarea name="summary" required maxlength="10000"></textarea></label>
+<label>操作说明<textarea name="instructions" required maxlength="5000"></textarea></label>
+<label>作品分类<select name="category"><option>动作</option><option>射击</option><option>益智</option><option>冒险</option><option>体育</option><option>休闲</option><option>模拟经营</option><option selected>其他</option></select></label>
+<label>游戏 ZIP<input name="file" type="file" accept=".zip" required></label><p id="upload-limits">根目录须包含 index.html。默认限额：100 MB / 解压 300 MB / 500 个条目。待审核或审核中须先撤回。</p>
 <label>屏幕方向<select name="orientation"><option value="landscape">横屏</option><option value="portrait">竖屏</option></select></label>
 <label>存档版本<input name="saveVersion" value="v1" pattern="[a-zA-Z0-9_-]{1,40}" required></label>
 <label>网络白名单申请（每行一个 HTTPS 来源；作品首次通过后可申请）<textarea name="domains"></textarea></label>
-<label class="check"><input type="checkbox" name="licensed" required>我确认拥有上传资源的使用与展示授权</label><button>上传并扫描</button><progress id="progress" max="100" value="0" hidden></progress></form>
+<label class="check"><input type="checkbox" name="licensed" required>我确认拥有上传资源的使用与展示授权</label><button>上传并扫描</button></fieldset><progress id="progress" aria-label="上传进度" max="100" value="0" hidden></progress><p id="upload-status" role="status" aria-live="polite"></p></form>
 <div id="versions"></div><h3>操作记录</h3><pre id="events"></pre></section>
 <dialog id="review"><form method="dialog" id="review-form"><h2>技术审核</h2><label>结论<select name="status"><option value="approved">审核通过</option><option value="changes">需要修改</option><option value="rejected">审核不通过</option></select></label><label>分类<select name="category"><option value="security">安全</option><option value="structure">结构</option><option value="content">内容</option><option value="other">其他</option></select></label><label>详细原因 / 复核说明<textarea name="reason" required maxlength="4000"></textarea></label><label class="check"><input name="findingsReviewed" type="checkbox">已检查结构、资源及全部代码疑点</label><button value="submit">提交结论</button><button type="button" id="cancel-review">取消</button></form></dialog>
 <dialog id="preview"><button id="close-preview">关闭预览</button><iframe title="隔离预览" sandbox="allow-scripts"></iframe></dialog>

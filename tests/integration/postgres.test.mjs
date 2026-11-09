@@ -94,9 +94,8 @@ test('PostgreSQL: concurrent migration, empty rollback, reapply, audit persisten
     await migrate(database, 'test', 'down'); // support lifecycle
     await migrate(database, 'test', 'down'); // phase 7
     await migrate(database, 'test', 'down'); // phase 6
-    await migrate(database, 'test', 'down');
-    await migrate(database, 'test', 'down');
-    await assert.rejects(migrate(database, 'test', 'down'), /Upload history is not empty/);
+    await migrate(database, 'test', 'down'); // phase 5
+    await assert.rejects(migrate(database, 'test', 'down'), /discovery data is not empty/);
     await migrate(database, 'test', 'up');
     await communityCases(database);
     await migrate(database, 'test', 'down'); // AI provider

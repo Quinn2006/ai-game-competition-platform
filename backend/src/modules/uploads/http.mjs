@@ -38,6 +38,10 @@ export function createGameHttp({ config, uploads, storage, competition, limits=d
     }
     if(!uploads) fail('UPLOADS_UNAVAILABLE',503);
     const action=path.slice('/api/games/'.length);
+    if(action==='limits') {
+      if(req.method!=='GET') fail('METHOD_NOT_ALLOWED',405);
+      return {route:path,data:JSON.stringify(limits)};
+    }
     if(action==='qr') {
       if(req.method!=='GET') fail('METHOD_NOT_ALLOWED',405);
       const work=await uploads.published(url.searchParams.get('work'));
