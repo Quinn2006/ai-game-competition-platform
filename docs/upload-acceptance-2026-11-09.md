@@ -41,6 +41,18 @@
 
 ## 尚待完成
 
-用户选择固定公网域名，需按 [自有隧道配置](public-tunnel.md) 提供 `data/public-tunnel.json` 和本机 Token 文件，并将主站、试玩域名分别路由到 `127.0.0.1:4320`、`127.0.0.2:4321`。Token 不发聊天、不入 Git。配置完成后再启动公网入口并验证实际域名、TLS、上传、审核与外网匿名试玩。
+用户选择固定公网域名。2026-11-10 用户提供配置文件后，现有启动程序已通过格式检查，但隧道连接仍失败（见下文）。待连接恢复后，再验证两条实际路由、上传、审核与外网匿名试玩。Token 不发聊天、不入 Git。
 
 本次验收不代表已经向主库发布这份作品、完成公网连通或生产部署。游戏长期游玩、各真机兼容性及原游戏存档接入平台桥接 API 尚未专项验收；隔离策略保持 `sandbox="allow-scripts"`，没有开放同源存储或任意外部网络。
+
+## 2026-11-10 公网连接实测
+
+遵守用户要求，未直接查看或输出 `public-tunnel.json`、`cloudflare-tunnel-token.txt`；由既有启动脚本和 cloudflared 使用。本轮未修改这两个文件。
+
+- 标准自有隧道入口：本地格式检查通过，QUIC 连续出现 `timeout: no recent network activity`，60 秒连接窗口结束后退出。
+- 通过当前启动进程的 `TUNNEL_TRANSPORT_PROTOCOL=http2` 重试，日志确认 `Initial protocol http2`，连续出现 `TLS handshake with edge error: EOF`，同样超时退出。此环境变量没有持久化。
+- 两个 HTTPS 域名均可以到达 Cloudflare；HTTP 请求返回 530，真实浏览器均显示 Error 1033。尚无健康的隧道连接，不能据此确认 Token 有效性或云端源站路由正确性。
+- 本机运行 Clash 相关进程，但代理、网络、防火墙或其他连接中间环节中的具体根因未确认。可换手机热点对照，或检查到 Cloudflare 7844 的出站 TCP（HTTP/2）及 UDP（QUIC）。参见 [Cloudflare 官方连接排障](https://developers.cloudflare.com/tunnel/troubleshooting/)。
+- 启动在建立隧道阶段终止，未进入数据库迁移、网站启动或主库作品发布。失败的隧道进程已清理。
+
+因此本轮结论为：配置可被启动程序识别，公网仍未跑通；上传、审核和匿名游玩的公网端到端验收需待网络连接恢复后继续。此轮仅更新验收记录，未修改应用代码，未重复运行应用回归测试。

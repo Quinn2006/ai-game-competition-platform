@@ -1,10 +1,12 @@
-## 2026-11-09：作品上传已完成本地验收，等待固定公网配置
+## 2026-11-10：本地上传验收通过，公网隧道连接受阻
 
 - 本次目标：完善上传，用用户提供的《最后的星轨》原始 ZIP 验证上传、审核和匿名游玩。
 - 当前 `main`：补齐工作台公开资料表单、上传进度与错误提示、发布资料校验、匿名试玩可见性校验和慢速上传时限；本次修改及回归记录见 `docs/upload-acceptance-2026-11-09.md`。
 - 本地已完成真实浏览器、PostgreSQL、ClamAV 验收；115 模块检查、72 项测试通过（2 项跳过）、130 条基线和 18 条决策通过；数据库、真实扫描和 HTTP 全流程集成通过。作品只发布在独立测试库，未导入主库。
-- 用户选择自行配置固定主站/试玩域名和隧道 Token。当前缺少 `data/public-tunnel.json`，公网尚未验证；不要创建临时隧道替代。
-- 下一步：检查配置文件及 Token 文件是否存在（勿输出 Token），按 `docs/public-tunnel.md` 检查两条路由，再按用户授权启动并验证公网；确认在主库的作品归属及管理员审核账号。不要把本地测试作品或测试账号当成主库数据。
+- 用户已配置固定域名和 Token，明确禁止查看 `data/public-tunnel.json` 与 `data/cloudflare-tunnel-token.txt`。仅允许既有启动程序使用，不要直接读取、输出或修改这两个文件。
+- 2026-11-10 执行 `start-local.ps1 -Mode Public -TunnelMode Own`：格式检查通过，默认 QUIC 连接超时；仅在本次进程设置 `TUNNEL_TRANSPORT_PROTOCOL=http2` 重试，日志确认 HTTP/2，仍出现 `TLS handshake with edge error: EOF`，超时退出。两个公网域名均返回 HTTP 530 / Cloudflare Error 1033。失败发生在数据库/网站启动前，本轮未启动主库或发布作品。
+- 本机存在 Clash 进程；无法仅据此判断根因。下一步先由用户检查代理/网络/防火墙到 Cloudflare 7844 的出站连接，或换网络对照，再重试原启动入口。连接成功后验证两条路由及完整作品流程；仍需确认主库作品归属和管理员审核身份。不要用临时隧道替代，不把测试库作品当成主库数据。
+- 诊断日志位于忽略目录 `tmp/public-tunnels/08b109c57f1e4a46a4110ced1d9a817e.log`（QUIC）和 `1270b719f7404cf7977dfc678463b593.log`（HTTP/2）。本次失败的隧道进程已由启动脚本清理。
 - 本机测试证据在 `tmp/upload-acceptance-20261109`，验收服务器工具 `tests/integration/upload-live.mjs`；测试端口 4360/4361，测试 PostgreSQL 55669。进程是否仍运行需实时核查。没有推送代码。
 
 ---
