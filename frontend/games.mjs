@@ -3,7 +3,7 @@ const $=selector=>document.querySelector(selector);
 const notice=message=>{$('#notice').textContent=message;};
 async function api(action,input={}) {
   const response=await fetch('/api/games/'+action,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input)});
-  const result=await response.json();if(!response.ok) throw new Error(result.error.message+' ('+result.error.code+')');return result;
+  let result;try{result=await response.json();}catch{throw new Error('服务网关响应异常（HTTP '+response.status+'），请刷新作品确认提交状态后重试。');}if(!response.ok) throw new Error(result.error.message+' ('+result.error.code+')');return result;
 }
 async function safe(work){try{await work();}catch(error){notice(error.message);}}
 function button(label,action){const b=document.createElement('button');b.textContent=label;b.onclick=()=>safe(action);return b;}
@@ -51,23 +51,32 @@ if($('#works')) {
     const disabled=controls.map(control=>control.disabled);controls.forEach(control=>control.disabled=true);
     uploading=true;$('#upload-fields').disabled=true;$('#progress').hidden=false;$('#progress').value=0;
     const status=text=>{$('#upload-status').textContent=text;notice(text);};
+    let transferId,submitted=false;
     try{
       status('正在保存公开资料…');
       const response=await fetch('/api/discovery/edit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workId:target,title:values.get('publicTitle'),summary:values.get('summary'),instructions:values.get('instructions'),category:values.get('category'),tags:profile?.tags??[],cover:profile?.cover??''})});
       const saved=await response.json();if(!response.ok)throw new Error(saved.error?.message??'公开资料保存失败');
-      const result=await new Promise((resolve,reject)=>{
-        const xhr=new XMLHttpRequest();xhr.open('POST','/api/games/upload?workId='+target+'&metadata='+encodeURIComponent(JSON.stringify(metadata)));xhr.setRequestHeader('Content-Type','application/zip');xhr.timeout=600000;
-        xhr.upload.onprogress=e=>{const percent=e.lengthComputable?Math.round(e.loaded/e.total*100):0;$('#progress').value=percent;status('正在上传：'+percent+'%');};
-        xhr.upload.onload=()=>{$('#progress').removeAttribute('value');status('文件已传输，正在扫描和检查结构，请勿关闭页面…');};
-        xhr.onload=()=>{let result;try{result=JSON.parse(xhr.responseText);}catch{reject(new Error('服务响应无效，请刷新作品检查结果后重试。'));return;}if(xhr.status!==200||result.rejected){const code=result.code??result.error?.code;const messages={ROOT_ENTRY_REQUIRED:'ZIP 根目录必须包含 index.html。',ZIP_LIMIT:'压缩包超过大小或文件数量限制。',FILE_TYPE:'压缩包包含不支持的文件类型。',UPLOAD_BUSY:'其他作品正在上传，请稍后重试。',WITHDRAW_REQUIRED:'请先撤回已有的待审核版本。',SUBMISSION_CLOSED:'作品提交已截止。'};reject(new Error(messages[code]??(result.error?.message??'上传失败')+'（'+(code??xhr.status)+'）'));}else resolve(result);};
-        xhr.onerror=()=>reject(new Error('网络连接失败，请刷新作品检查是否已接收，再重试。'));
-        xhr.ontimeout=()=>reject(new Error('上传或扫描超时，请刷新作品检查结果，避免重复提交。'));
-        xhr.onabort=()=>reject(new Error('上传已中断。'));xhr.send(file);
-      });
+      const transfer=await api('upload-start',{...metadata,workId:target,size:file.size});transferId=transfer.uploadId;
+      for(let offset=0;offset<file.size;offset+=transfer.chunkBytes){
+        const part=file.slice(offset,offset+transfer.chunkBytes);
+        const acknowledgement=await new Promise((resolve,reject)=>{
+          const xhr=new XMLHttpRequest();xhr.open('POST','/api/games/upload-chunk?uploadId='+encodeURIComponent(transferId)+'&offset='+offset);xhr.setRequestHeader('Content-Type','application/octet-stream');xhr.timeout=90000;
+          xhr.upload.onprogress=e=>{const percent=Math.min(99,Math.floor((offset+e.loaded)/file.size*100));$('#progress').value=percent;status('正在上传：'+percent+'%');};
+          xhr.onload=()=>{let result;try{result=JSON.parse(xhr.responseText);}catch{reject(new Error('上传网关响应异常（HTTP '+xhr.status+'），请检查网络后重试。'));return;}if(xhr.status!==200)reject(new Error((result.error?.message??'上传失败')+'（'+(result.error?.code??xhr.status)+'）'));else resolve(result);};
+          xhr.onerror=()=>reject(new Error('网络连接失败，请刷新作品检查结果后重试。'));
+          xhr.ontimeout=()=>reject(new Error('上传超时，请检查网络后重试。'));
+          xhr.onabort=()=>reject(new Error('上传已中断。'));xhr.send(part);
+        });
+        if(acknowledgement.received!==offset+part.size)throw new Error('文件接收不完整，请重试。');
+      }
+      $('#progress').removeAttribute('value');status('服务器已收齐文件，正在扫描和检查结构，请勿关闭页面…');
+      const result=await api('upload-finish',{uploadId:transferId});transferId=null;
+      if(result.rejected){const messages={ROOT_ENTRY_REQUIRED:'ZIP 根目录必须包含 index.html。',ZIP_LIMIT:'压缩包超过大小或文件数量限制。',FILE_TYPE:'压缩包包含不支持的文件类型。'};throw new Error(messages[result.code]??'压缩包检查未通过（'+result.code+'）');}
+      submitted=true;
       await refresh();await select(target);form.elements.file.value='';form.elements.licensed.checked=false;
       status(result.scan==='clean'?'上传及扫描通过，已提交管理员审核；通过后自动公开。':'扫描未通过，无法发布。请查看版本结果；扫描服务异常时请联系管理员检查 ClamAV。');
       if(result.scan==='clean')await preview(result.id);
-    }catch(error){$('#upload-fields').disabled=false;status(error.message);}
+    }catch(error){if(transferId)api('upload-cancel',{uploadId:transferId}).catch(()=>{});if(!submitted)$('#upload-fields').disabled=false;status(submitted?'作品已上传，请刷新查看扫描与审核状态。页面更新失败：'+error.message:error.message);}
     finally{uploading=false;controls.forEach((control,i)=>control.disabled=disabled[i]);$('#progress').hidden=true;}
   });};
   $('#review-form').onsubmit=event=>{event.preventDefault();safe(async()=>{const v=new FormData(event.target);await api('decide',{workId,versionId:reviewId,status:v.get('status'),category:v.get('category'),reason:v.get('reason'),findingsReviewed:v.get('findingsReviewed')==='on'});$('#review').close();await refresh();await select(workId);});};

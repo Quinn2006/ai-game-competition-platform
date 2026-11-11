@@ -59,3 +59,43 @@ test('local private storage refuses traversal/overwrite, supports idempotent ret
   await assert.rejects(storage.put('quarantine','a',Buffer.from('other')));assert.equal((await storage.get('quarantine','a')).toString(),'first');
   await assert.rejects(storage.get('release','../x'));assert.throws(()=>createLocalStorage('tmp/invalid','production'));
 });
+
+test('chunked ZIP transfer binds sessions, checks order and size, and scans only the complete archive',async t=>{
+  const bytes=zipFixture([['index.html','<h1>Chunk upload</h1>']]),received=[];
+  let authorized=true;
+  const uploads={async run(action,input,context,body){if(!authorized||context.sessionToken!=='owner')throw new AppError('FORBIDDEN',403,'Forbidden');if(action==='upload'){received.push(body);return {id:'version',scan:'clean'};}return {ok:true};}};
+  const config={environment:'test',mainOrigin:'http://127.0.0.1:1',gameOrigin:'http://127.0.0.2:1'};
+  const games=createGameHttp({config,uploads,storage:{},limits:{compressed:bytes.length,expanded:1000,files:5}});
+  const app=createApp({config,games:games.main,log:()=>{}});t.after(()=>{app.closeAllConnections();app.close();});
+  app.listen(0,'127.0.0.1');await once(app,'listening');config.mainOrigin='http://127.0.0.1:'+app.address().port;
+  const post=async(action,input,cookie='owner',raw=false)=>{const response=await fetch(config.mainOrigin+'/api/games/'+action,{method:'POST',headers:{Origin:config.mainOrigin,Cookie:'session='+cookie,'Content-Type':raw?'application/octet-stream':'application/json'},body:raw?input:JSON.stringify(input)});return {status:response.status,value:await response.json()};};
+  const start=()=>post('upload-start',{workId:randomUUID(),size:bytes.length});
+  assert.equal((await post('upload-start',{size:bytes.length+1})).status,413);
+  const first=await start(),id=first.value.uploadId;assert.equal(first.status,200);
+  assert.equal((await start()).status,429,'aggregate bytes remain bounded');
+  assert.equal((await post('upload-finish',{uploadId:id})).status,409);
+  assert.equal((await post('upload-cancel',{uploadId:id},'other')).status,404);
+  const part=(offset,data,cookie='owner')=>post('upload-chunk?uploadId='+id+'&offset='+offset,data,cookie,true);
+  assert.equal((await part(0,bytes.subarray(0,10),'other')).status,404);
+  assert.equal((await part(1,bytes.subarray(0,10))).status,409);
+  assert.equal((await part(0,Buffer.alloc(0))).status,400);
+  assert.equal((await part(0,bytes.subarray(0,10))).value.received,10);
+  assert.equal((await part(0,bytes.subarray(0,10))).status,409,'duplicate bytes must not be appended');
+  authorized=false;assert.equal((await part(10,bytes.subarray(10))).status,403);authorized=true;
+  assert.equal((await part(10,bytes.subarray(10))).value.received,bytes.length);
+  assert.equal(received.length,0,'partial transfer cannot enter the scan/review service');
+  const complete=await post('upload-finish',{uploadId:id});assert.equal(complete.value.scan,'clean');assert.deepEqual(received,[bytes]);
+  assert.equal((await post('upload-finish',{uploadId:id})).status,404,'finalization cannot replay');
+  const next=await start();assert.equal(next.status,200);assert.equal((await post('upload-cancel',{uploadId:next.value.uploadId})).status,200);assert.equal((await start()).status,200,'cancellation releases budget');
+});
+
+test('abandoned chunk transfers expire and release their memory reservation',async t=>{
+  const config={environment:'test',mainOrigin:'http://127.0.0.1:1',gameOrigin:'http://127.0.0.2:1'};
+  const games=createGameHttp({config,uploads:{run:async()=>({ok:true})},storage:{},limits:{compressed:100,expanded:100,files:1},transferTimeout:40});
+  const app=createApp({config,games:games.main,log:()=>{}});t.after(()=>{app.closeAllConnections();app.close();});
+  app.listen(0,'127.0.0.1');await once(app,'listening');config.mainOrigin='http://127.0.0.1:'+app.address().port;
+  const post=(action,input)=>fetch(config.mainOrigin+'/api/games/'+action,{method:'POST',headers:{Origin:config.mainOrigin,Cookie:'session=owner','Content-Type':'application/json'},body:JSON.stringify(input)});
+  const first=await (await post('upload-start',{size:100})).json();await new Promise(resolve=>setTimeout(resolve,80));
+  assert.equal((await post('upload-finish',{uploadId:first.uploadId})).status,404);
+  assert.equal((await post('upload-start',{size:100})).status,200);
+});

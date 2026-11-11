@@ -13,8 +13,15 @@ async function body(req,max) {
   for await (const part of req) { size+=part.length; if(size>max) fail('BODY_TOO_LARGE',413); parts.push(part); }
   return Buffer.concat(parts);
 }
-export function createGameHttp({ config, uploads, storage, competition, limits=defaultLimits, loadTimeout=30000 }) {
+export function createGameHttp({ config, uploads, storage, competition, limits=defaultLimits, loadTimeout=30000, transferTimeout=15*60000 }) {
   const tickets=new Map();
+  // Temporary transfers never become versions until the entire ZIP is scanned.
+  // Reserve a bounded aggregate budget, and discard abandoned transfers on expiry.
+  const transfers=new Map(),chunkBytes=Math.min(1000000,limits.compressed);
+  let reserved=0;
+  const sessionKey=context=>createHash('sha256').update(context.sessionToken??'').digest('hex');
+  function discard(id){const transfer=transfers.get(id);if(transfer){clearTimeout(transfer.timer);reserved-=transfer.size;transfers.delete(id);}}
+  function transferFor(id,context){const transfer=transfers.get(id);if(!transfer||!context.sessionToken||transfer.session!==sessionKey(context))fail('TRANSFER_NOT_FOUND',404);if(transfer.busy)fail('UPLOAD_BUSY',429);return transfer;}
   let cached=null;
   let receiving=false;
   function issue(version,context=null) {
@@ -57,6 +64,20 @@ export function createGameHttp({ config, uploads, storage, competition, limits=d
     }
     if(req.method!=='POST') fail('METHOD_NOT_ALLOWED',405);
     if(req.headers.origin!==config.mainOrigin || (req.headers['sec-fetch-site'] && req.headers['sec-fetch-site']!=='same-origin')) fail('CSRF_REJECTED',403);
+    if(action==='upload-chunk') {
+      if(req.headers['content-type']!=='application/octet-stream')fail('CONTENT_TYPE',415);
+      const id=url.searchParams.get('uploadId'),transfer=transferFor(id,context),offset=url.searchParams.get('offset');
+      if(!/^\d+$/.test(offset??'')||Number(offset)!==transfer.received||transfer.received>=transfer.size)fail('CHUNK_ORDER',409);
+      transfer.busy=true;
+      try{
+        await uploads.run('upload-check',transfer.input,context);
+        const bytes=await body(req,Math.min(chunkBytes,transfer.size-transfer.received));
+        if(!transfers.has(id))fail('TRANSFER_NOT_FOUND',404);
+        if(!bytes.length)fail('EMPTY_CHUNK');
+        transfer.parts.push(bytes);transfer.received+=bytes.length;
+        return {route:path,data:JSON.stringify({received:transfer.received})};
+      }finally{transfer.busy=false;}
+    }
     let input,bytes;
     if(action==='upload') {
       if(receiving)fail('UPLOAD_BUSY',429);
@@ -72,6 +93,30 @@ export function createGameHttp({ config, uploads, storage, competition, limits=d
       if(req.headers['content-type']?.split(';')[0]!=='application/json') fail('CONTENT_TYPE',415);
       try {input=JSON.parse((await body(req,16384)).toString());} catch {fail('INVALID_JSON');}
       if(!input || typeof input!=='object' || Array.isArray(input)) fail('INVALID_JSON');
+    }
+    if(action==='upload-start') {
+      await uploads.run('upload-check',input,context);
+      if(!Number.isSafeInteger(input.size)||input.size<1||input.size>limits.compressed)fail('ZIP_LIMIT',413);
+      if(transfers.size>=4||reserved+input.size>limits.compressed)fail('UPLOAD_BUSY',429);
+      const id=randomBytes(32).toString('hex');
+      const transfer={input,session:sessionKey(context),size:input.size,received:0,parts:[],busy:false};
+      transfer.timer=setTimeout(()=>discard(id),transferTimeout);transfer.timer.unref();
+      transfers.set(id,transfer);reserved+=input.size;
+      return {route:path,data:JSON.stringify({uploadId:id,chunkBytes})};
+    }
+    if(action==='upload-cancel'||action==='upload-finish') {
+      const transfer=transferFor(input.uploadId,context);
+      if(action==='upload-cancel'){discard(input.uploadId);return {route:path,data:'{"ok":true}'};}
+      if(transfer.received!==transfer.size)fail('UPLOAD_INCOMPLETE',409);
+      transfer.busy=true;
+      try{
+        await uploads.run('upload-check',transfer.input,context);
+        if(!transfers.has(input.uploadId))fail('TRANSFER_NOT_FOUND',404);
+        bytes=Buffer.concat(transfer.parts,transfer.size);
+        discard(input.uploadId);
+        const result=await uploads.run('upload',transfer.input,context,bytes);
+        return {route:path,data:JSON.stringify(result)};
+      }finally{transfer.busy=false;discard(input.uploadId);}
     }
     if(action==='judge-preview'){
       if(!competition)fail('NOT_FOUND',404);

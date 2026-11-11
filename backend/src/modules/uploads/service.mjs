@@ -63,13 +63,14 @@ export function createUploadService({ database, identity, storage, scan, limits 
               versions: (await c.query('SELECT * FROM platform.game_versions WHERE work_id=$1 ORDER BY created_at DESC', [work.id])).rows,
               events: (await c.query('SELECT action,version_id,detail,occurred_at FROM platform.upload_events WHERE work_id=$1 ORDER BY occurred_at DESC', [work.id])).rows };
           }
-          if (action === 'upload') {
+          if (action === 'upload' || action === 'upload-check') {
             own(user, work); beforeDeadline();
             if (input.licensed !== true) fail('LICENSE_REQUIRED');
             if ((await c.query("SELECT id FROM platform.game_versions WHERE work_id=$1 AND status IN ('pending','reviewing') AND NOT withdrawn", [work.id])).rowCount) fail('WITHDRAW_REQUIRED', 409);
             const domains = networkOrigins(input.domains ?? []);
             if (domains.length && !work.published_version) fail('NETWORK_REQUIRES_APPROVED_WORK');
             if (!['landscape','portrait'].includes(input.orientation) || !/^[a-zA-Z0-9_-]{1,40}$/.test(input.saveVersion)) fail('INVALID_METADATA');
+            if (action === 'upload-check') return { ok:true };
             const id = randomUUID(), digest = createHash('sha256').update(bytes).digest('hex');
             await storage.put('quarantine',id,bytes);
             let archive, result;
