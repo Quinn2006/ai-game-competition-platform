@@ -22,11 +22,9 @@ export function createPrivateStorage(config, driver = null) {
   };
   // expected = { digest, size } binds a read to the trusted database record
   // (platform.game_versions.digest, migration 005: SHA-256 hex + immutable
-  // trigger). The contract of this round: the optional interface stays open and
-  // shape-checked, while every production release/serving read MUST eventually
-  // supply the database digest (wiring the upload and trial-play callers is a
-  // later, separately reviewed change). A malformed expectation is refused
-  // instead of being silently ignored.
+  // trigger). Review-to-release promotion and trial-play reads supply that
+  // digest, so replacing both an object and its sidecar cannot replace a version.
+  // A malformed expectation is refused instead of being silently ignored.
   const validateExpected = expected => {
     if (expected == null) return;
     if (typeof expected !== 'object' || Array.isArray(expected)) throw new AppError('INVALID_OBJECT', 400, '无效的对象校验参数');

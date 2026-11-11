@@ -151,7 +151,7 @@ export function createGameHttp({ config, uploads, storage, competition, limits=d
       if(path==='__platform_bridge.mjs') { data=await readFile(new URL('../../../../frontend/bridge.mjs',import.meta.url)); res.setHeader('Content-Type','text/javascript'); }
       else {
         if(cached?.id!==v.id || cached.digest!==v.digest){
-          const bytes=await storage.get(ticket.context?'review':'release',v.id);
+          const bytes=await storage.get(ticket.context?'review':'release',v.id,{digest:v.digest});
           if(createHash('sha256').update(bytes).digest('hex')!==v.digest)fail('ASSET_INTEGRITY',503);
           cached={id:v.id,digest:v.digest,...await inspectZip(bytes,limits)};
         }
@@ -164,5 +164,6 @@ export function createGameHttp({ config, uploads, storage, competition, limits=d
       res.writeHead(200);res.end(req.method==='HEAD'?undefined:data);
     } catch(error) {const result=publicError(error,'game');res.writeHead(result.status);res.end(JSON.stringify(result.body));}
   });
-  return {main,game};
+  const dispose=()=>{for(const id of transfers.keys())discard(id);tickets.clear();cached=null;};
+  return {main,game,dispose};
 }

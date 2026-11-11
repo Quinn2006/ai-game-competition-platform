@@ -10,7 +10,7 @@ import { createOperationsHttp } from './modules/operations/http.mjs';
 import { appendAudit } from './modules/audit/repository.mjs';
 import { dependenciesReady } from './platform/health.mjs';
 
-export function createApp({ config, database, storage, log, identity, mailbox, games, discovery, community, operations, competition }) {
+export function createApp({ config, database, storage, log, identity, mailbox, games, discovery, community, operations, competition, readinessChecks = [] }) {
   const operationsHttp = createOperationsHttp({config,operations});
   const competitionHttp = createCompetitionHttp({config,competition});
   const communityHttp = createCommunityHttp({config,community});
@@ -47,7 +47,7 @@ export function createApp({ config, database, storage, log, identity, mailbox, g
       }
       let data = { status: 'alive', requestId };
       if (route === '/health/ready') {
-        if (!await dependenciesReady([() => databaseReady(database, config.environment), () => storage.health()])) {
+        if (!await dependenciesReady([() => databaseReady(database, config.environment), () => storage.health(), ...readinessChecks])) {
           throw new AppError('DEPENDENCIES_NOT_READY', 503, '依赖服务尚未就绪');
         }
         data = { status: 'ready', requestId };

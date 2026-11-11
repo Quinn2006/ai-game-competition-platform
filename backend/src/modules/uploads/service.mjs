@@ -113,7 +113,9 @@ export function createUploadService({ database, identity, storage, scan, limits 
                 if (!(await c.query('SELECT work_id FROM platform.work_profiles WHERE work_id=$1', [work.id])).rowCount) {
                   throw new AppError('PUBLIC_PROFILE_REQUIRED',409,'请先由作者补齐公开资料（作品名称、简介、操作说明和分类），再审核发布');
                 }
-                await storage.put('release',version.id,await storage.get('review',version.id));
+                const bytes = await storage.get('review',version.id,{digest:version.digest});
+                if (createHash('sha256').update(bytes).digest('hex') !== version.digest) fail('ASSET_INTEGRITY',503);
+                await storage.put('release',version.id,bytes);
                 await c.query('UPDATE platform.works SET published_version=$2 WHERE id=$1',[work.id,version.id]);
               } else if (!['security','structure','content','other'].includes(input.category)) fail('CATEGORY_REQUIRED');
               await c.query('UPDATE platform.game_versions SET status=$2 WHERE id=$1',[version.id,input.status]);
