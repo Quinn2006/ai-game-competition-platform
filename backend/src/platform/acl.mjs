@@ -81,6 +81,9 @@ function scriptFor(paths, accountName) {
   const payload = Buffer.from(JSON.stringify({ paths, accountName }), 'utf8').toString('base64');
   return [
     "$ErrorActionPreference='Stop'",
+    // PowerShell 7 module paths inherited by Node can shadow Windows PowerShell
+    // 5.1 security cmdlets. Use the modules belonging to the selected host.
+    "$env:PSModulePath=Join-Path $PSHOME 'Modules'",
     `$spec=ConvertFrom-Json ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${payload}')))`,
     '$identity=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value',
     '$accountSid=$null',

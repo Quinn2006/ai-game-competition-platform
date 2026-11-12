@@ -94,6 +94,8 @@ node scripts\local-runtime.mjs restore-check $backup
 
 ## 权限与迁移
 
+生产隔离新增的部署目录和派生资源权限见 [production-isolation.md](production-isolation.md)。源码仍在 backend/frontend；验收产物只在 tmp/preview，生产新安装可选择 data/submissions 下的全新独立目录。已有原件与数据库不自动迁移或重建。
+
 初始化收紧 Windows data 与 .env ACL，仅当前运行账户、SYSTEM 和管理员可访问。业务数据库角色不是超级用户。开发进程同属登录用户；云端应拆分数据库和网站运行账户。禁止手动编辑数据库内部文件，禁止把 postgres 目录加入坚果云同步。
 
 整个 data、环境文件、凭据、备份、临时文件被 Git 忽略；只有 .env.example 可入库，目录由工具创建。SUBMISSIONS_ROOT、EXPORTS_ROOT 可配置，业务记录只存相对对象键。跨平台用逻辑备份和作品校验传输，不复制 Windows 数据库内部文件。生产环境原对象存储、域名与权限约束保持，本次不代表已可部署生产。

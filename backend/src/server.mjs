@@ -17,12 +17,14 @@ import { createCompetitionService, deletionParticipant as competitionDeletion } 
 import {competitionNotifier} from './modules/operations/competition-events.mjs';
 import { pathToFileURL } from 'node:url';
 import { databaseReady } from './platform/migrations.mjs';
+import { readRuntimeConfig, validationClient, resourcePermit } from './platform/isolated-runtime.mjs';
+import { callChannel, serveChannel } from './platform/service-channel.mjs';
 import { dependenciesReady } from './platform/health.mjs';
 
 // Importing the entry point does not listen or read local credentials. Tests can
 // exercise the same assembly with disposable dependencies and real HTTP sockets.
-export async function startServer({ config = loadConfig(), log = createLogger(), database, storage, scan, scannerReady } = {}) {
-  let app, games, cleanup, cleaning = null, stopping = null;
+export async function startServer({ config = loadConfig(), log = createLogger(), database, storage, scan, scannerReady, isolation, embeddedGames = false } = {}) {
+  let app, games, channel, cleanup, cleaning = null, stopping = null;
   const close = server => new Promise(resolve => {
     if (!server) return resolve();
     server.close(() => resolve());
@@ -33,11 +35,12 @@ export async function startServer({ config = loadConfig(), log = createLogger(),
     stopping = (async () => {
       clearInterval(cleanup);
       const timeout = setTimeout(() => {
-        app?.closeAllConnections();games?.game.closeAllConnections();
+        app?.closeAllConnections();games?.game?.closeAllConnections();
       }, 10000);
       timeout.unref();
       try {
         await Promise.all([close(app),close(games?.game)]);
+        await channel?.close();
         games?.dispose();
         await cleaning;
         await database?.end();
@@ -52,6 +55,10 @@ export async function startServer({ config = loadConfig(), log = createLogger(),
   });
   try {
     const mailbox = undefined;
+    if (config.environment === 'production' && !embeddedGames) {
+      isolation ??= await readRuntimeConfig(process.env.ISOLATION_CONFIG, 'main');
+    }
+
     // An ACL refusal happens before creating a pool or opening either listener.
     storage ??= config.localGames ? createLocalStorage(config.submissionsRoot,config.environment)
       : config.storage.driver === 'local' ? createPrivateStorage(config, createProductionLocalStorageDriver(config))
@@ -62,20 +69,26 @@ export async function startServer({ config = loadConfig(), log = createLogger(),
     const gamesEnabled = config.localGames || config.environment === 'production';
     scan ??= createScanner({port:config.scannerPort});
     const probeScan = createScanner({port:config.scannerPort,timeout:1500});
-    scannerReady ??= async () => (await probeScan(Buffer.from('platform readiness probe'))).status === 'clean';
+    scannerReady ??= isolation ? async () => (await callChannel(isolation.validator,{action:'health'})).ready === true : async () => (await probeScan(Buffer.from('platform readiness probe'))).status === 'clean';
     const readinessChecks = config.environment === 'production' ? [scannerReady] : [];
     if (config.environment === 'production' && !await dependenciesReady([
       () => databaseReady(database,config.environment), () => storage.health(), ...readinessChecks,
     ], 10000)) throw new Error('Production dependencies not ready');
-    const uploads = gamesEnabled && identity ? createUploadService({database,identity,storage,scan,limits:config.uploadLimits,deadline:config.submissionDeadline}) : null;
+    const uploads = gamesEnabled && identity ? createUploadService({database,identity,storage,scan,validate:isolation?validationClient(isolation,config.uploadLimits):undefined,limits:config.uploadLimits,deadline:config.submissionDeadline}) : null;
     const operations = database ? createOperationsService({database,identity,apiSecret:config.sessionSecret,contactEmail:process.env.SUPPORT_EMAIL??''}) : null;
     const competition = database && identity ? createCompetitionService({database,identity,onEvent:competitionNotifier(operations)}) : null;
-    games = createGameHttp({config,uploads,storage,competition,limits:config.uploadLimits,loadTimeout:config.gameLoadTimeout});
+    games = createGameHttp({config,uploads,storage,competition,isolated:Boolean(isolation),limits:config.uploadLimits,loadTimeout:config.gameLoadTimeout});
+    if (isolation) channel = await serveChannel(isolation.auth, async input => {
+      if (input?.action !== 'authorize' || typeof input.token !== 'string' || !/^[a-f0-9]{64}$/.test(input.token) || typeof input.path !== 'string' || input.path.length > 240) throw Error('Invalid authorization');
+      const {version} = await games.authorize(input.token);
+      return resourcePermit(isolation,version,input.path,config.uploadLimits);
+    });
+    const gameReady = isolation ? async () => (await callChannel(isolation.control,{action:'health'})).ready === true : () => games.game.listening;
     const discovery = database ? createDiscoveryService({ database, identity, storage:gamesEnabled?storage:undefined }) : null;
     const community = database && identity ? createCommunityService({database,identity,secret:config.sessionSecret}) : null;
     app = createApp({ config, database, storage, log, identity, mailbox, games:games.main, discovery, community, operations, competition,
-      readinessChecks:[...readinessChecks,...(gamesEnabled?[() => games.game.listening]:[])] });
-    if(gamesEnabled) {
+      readinessChecks:[...readinessChecks,...(gamesEnabled?[gameReady]:[])] });
+    if(gamesEnabled && !isolation) {
       const origin=new URL(config.gameListenOrigin);
       await listen(games.game,Number(origin.port),origin.hostname);
     }
@@ -85,7 +98,7 @@ export async function startServer({ config = loadConfig(), log = createLogger(),
       process.exitCode=1;
       stop().catch(() => log('app.failed',{code:'SHUTDOWN_ERROR'}));
     };
-    app.on('error',failed);games.game.on('error',failed);
+    app.on('error',failed);games.game?.on('error',failed);
     cleanup = identity ? setInterval(() => {
       if (cleaning) return;
       cleaning = (async () => {

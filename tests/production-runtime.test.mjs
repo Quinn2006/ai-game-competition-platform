@@ -39,7 +39,7 @@ async function fixture() {
 }
 
 test('production assembly serves uploads and anonymous games with secure origins; revocation and stop close both listeners',async t=>{
-  const f=await fixture(),runtime=await startServer(f);t.after(()=>runtime.stop());
+  const f=await fixture(),runtime=await startServer({...f,embeddedGames:true});t.after(()=>runtime.stop());
   assert.equal((await http(runtime.app,'/health/ready','main.example.com')).status,200);
   assert.equal((await http(runtime.app,'/api/games/limits','main.example.com')).status,200);
   assert.equal((await http(runtime.app,'/api/games/list','main.example.com',{method:'POST',headers:{Origin:f.config.mainOrigin,'Content-Type':'application/json'},body:'{}'})).status,401);
@@ -65,7 +65,7 @@ test('production assembly serves uploads and anonymous games with secure origins
 test('production refuses unready storage, scanner or wrong database environment before listening',async()=>{
   for(const change of [{storageReady:false},{scannerReady:false},{environment:'development'}]) {
     const f=await fixture();Object.assign(f.state,change);
-    await assert.rejects(startServer(f),/dependencies not ready/);assert.equal(f.state.ends,1);
+    await assert.rejects(startServer({...f,embeddedGames:true}),/dependencies not ready/);assert.equal(f.state.ends,1);
   }
 });
 
@@ -74,7 +74,7 @@ test('shutdown drains an active HTTP request before closing the database',async 
   let entered,release;
   const active=new Promise(resolve=>{entered=resolve;}),gate=new Promise(resolve=>{release=resolve;});
   f.database.query=async sql=>{if(sql.includes('JOIN platform.game_versions')){entered();await gate;}return query(sql);};
-  const runtime=await startServer(f);t.after(()=>{release();return runtime.stop();});
+  const runtime=await startServer({...f,embeddedGames:true});t.after(()=>{release();return runtime.stop();});
   const response=http(runtime.app,'/api/games/play?work='+f.version.work_id,'main.example.com');
   await active;
   const stopped=runtime.stop();
@@ -89,10 +89,10 @@ test('partial startup failure releases the game port and database pool',async t=
   const probe=createServer();probe.listen(0,'127.0.0.2');await once(probe,'listening');
   const gamePort=probe.address().port;await new Promise(resolve=>probe.close(resolve));
   const f=await fixture();f.config.port=occupied.address().port;f.config.gameListenOrigin=`http://127.0.0.2:${gamePort}`;
-  await assert.rejects(startServer(f),{code:'EADDRINUSE'});assert.equal(f.state.ends,1);
+  await assert.rejects(startServer({...f,embeddedGames:true}),{code:'EADDRINUSE'});assert.equal(f.state.ends,1);
   probe.listen(gamePort,'127.0.0.2');await once(probe,'listening');await new Promise(resolve=>probe.close(resolve));
   const f2=await fixture();f2.config.gameListenOrigin=`http://127.0.0.2:${gamePort}`;
   const occupiedGame=createServer();occupiedGame.listen(gamePort,'127.0.0.2');await once(occupiedGame,'listening');
   t.after(()=>new Promise(resolve=>occupiedGame.close(resolve)));
-  await assert.rejects(startServer(f2),{code:'EADDRINUSE'});assert.equal(f2.state.ends,1);
+  await assert.rejects(startServer({...f2,embeddedGames:true}),{code:'EADDRINUSE'});assert.equal(f2.state.ends,1);
 });

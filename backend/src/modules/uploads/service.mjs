@@ -21,7 +21,7 @@ export const deletionParticipant = {
   },
 };
 
-export function createUploadService({ database, identity, storage, scan, limits = defaultLimits, deadline = null, clock = () => Date.now() }) {
+export function createUploadService({ database, identity, storage, scan, validate, limits = defaultLimits, deadline = null, clock = () => Date.now() }) {
   let uploading = false;
   const audit = (c, actor, action, work, version, detail = {}) => c.query(
     'INSERT INTO platform.upload_events (id,actor_id,action,work_id,version_id,detail) VALUES ($1,$2,$3,$4,$5,$6)',
@@ -73,22 +73,31 @@ export function createUploadService({ database, identity, storage, scan, limits 
             if (action === 'upload-check') return { ok:true };
             const id = randomUUID(), digest = createHash('sha256').update(bytes).digest('hex');
             await storage.put('quarantine',id,bytes);
-            let archive, result;
-            try { result = await scan(bytes); } catch { result = { status: 'error', engine: 'unavailable' }; }
-            try { archive = await inspectZip(bytes, limits); }
-            catch (error) {
-              await audit(c,user.id,'upload_rejected',work.id,null,{ objectId:id,digest,scan:result.status,code:error.code ?? 'INVALID_ZIP' });
-              return { rejected: true, code: error.code ?? 'INVALID_ZIP' };
-            }
-            if (result.status === 'clean') {
-              for (const data of archive.files.values()) {
-                try { result = await scan(data); } catch { result = { status: 'error', engine: 'unavailable' }; }
-                if (result.status !== 'clean') break;
+            let archive, result, serving;
+            if (validate) {
+              result = await validate(bytes, id);
+              if (result.rejected) {
+                await audit(c,user.id,'upload_rejected',work.id,null,{objectId:id,digest,code:result.code});
+                return {rejected:true,code:result.code};
+              }
+              archive = {findings:result.findings}; serving = result.serving;
+            } else {
+              try { result = await scan(bytes); } catch { result = { status: 'error', engine: 'unavailable' }; }
+              try { archive = await inspectZip(bytes, limits); }
+              catch (error) {
+                await audit(c,user.id,'upload_rejected',work.id,null,{ objectId:id,digest,scan:result.status,code:error.code ?? 'INVALID_ZIP' });
+                return { rejected: true, code: error.code ?? 'INVALID_ZIP' };
+              }
+              if (result.status === 'clean') {
+                for (const data of archive.files.values()) {
+                  try { result = await scan(data); } catch { result = { status: 'error', engine: 'unavailable' }; }
+                  if (result.status !== 'clean') break;
+                }
               }
             }
             const status = ['clean','infected'].includes(result.status) ? result.status : 'error';
             if (status === 'clean') await storage.put('review',id,bytes);
-            const metadata = { domains,orientation:input.orientation,saveVersion:input.saveVersion,licensed:true };
+            const metadata = { domains,orientation:input.orientation,saveVersion:input.saveVersion,licensed:true,...(serving?{serving}:{}) };
             await c.query('INSERT INTO platform.game_versions (id,work_id,status,digest,metadata,findings,scan_status) VALUES ($1,$2,$3,$4,$5,$6,$7)', [id,work.id,'pending',digest,metadata,JSON.stringify(archive.findings),status]);
             await audit(c,user.id,'uploaded',work.id,id,{ digest,scan:status,engine:result.engine });
             return { id, scan:status, findings:archive.findings };
@@ -145,7 +154,7 @@ export function createUploadService({ database, identity, storage, scan, limits 
         const work = await workFor(c,workId);
         if (user.id !== work.owner_id) admin(user);
         if (!uuid(versionId)) fail('NOT_FOUND',404);
-        const v = (await c.query("SELECT * FROM platform.game_versions WHERE id=$1 AND work_id=$2 AND scan_status='clean' AND NOT revoked",[versionId,workId])).rows[0];
+        const v = (await c.query("SELECT * FROM platform.game_versions WHERE id=$1 AND work_id=$2 AND scan_status='clean' AND NOT revoked AND NOT withdrawn",[versionId,workId])).rows[0];
         if (!v) fail('PREVIEW_UNAVAILABLE',409);
         return { ...v,title:work.title };
       });

@@ -1,19 +1,19 @@
 import { randomBytes, createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { createServer } from 'node:http';
-import { AppError, publicError } from '../../platform/errors.mjs';
+import { createGameListener } from './game-listener.mjs';
+import { AppError } from '../../platform/errors.mjs';
 import { inspectZip, defaultLimits } from './zip.mjs';
 import QRCode from 'qrcode';
 
 const assets = new Map([['/studio',['studio.html','text/html']],['/admin/reviews',['studio.html','text/html']],['/play',['play.html','text/html']],['/games/ui.mjs',['games.mjs','text/javascript']],['/games/style.css',['games.css','text/css']]]);
-const mime = { html:'text/html',js:'text/javascript',css:'text/css',json:'application/json',svg:'image/svg+xml',png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',gif:'image/gif',webp:'image/webp',ico:'image/x-icon',mp3:'audio/mpeg',ogg:'audio/ogg',wav:'audio/wav',m4a:'audio/mp4',mp4:'video/mp4',webm:'video/webm',woff:'font/woff',woff2:'font/woff2',ttf:'font/ttf',wasm:'application/wasm',txt:'text/plain' };
+
 const fail = (code,status=400) => { throw new AppError(code,status,'请求无法完成'); };
 async function body(req,max) {
   let size=0; const parts=[];
   for await (const part of req) { size+=part.length; if(size>max) fail('BODY_TOO_LARGE',413); parts.push(part); }
   return Buffer.concat(parts);
 }
-export function createGameHttp({ config, uploads, storage, competition, limits=defaultLimits, loadTimeout=30000, transferTimeout=15*60000 }) {
+export function createGameHttp({ config, uploads, storage, competition, limits=defaultLimits, loadTimeout=30000, transferTimeout=15*60000, isolated=false }) {
   const tickets=new Map();
   // Temporary transfers never become versions until the entire ZIP is scanned.
   // Reserve a bounded aggregate budget, and discard abandoned transfers on expiry.
@@ -129,41 +129,23 @@ export function createGameHttp({ config, uploads, storage, competition, limits=d
     const result=action==='preview'?issue(await uploads.preview(context,input.workId,input.versionId),context):await uploads.run(action,input,context,bytes);
     return {route:path,data:JSON.stringify(result)};
   };
-  const game=createServer({requestTimeout:10000},async(req,res)=>{
-    res.setHeader('Cache-Control','no-store'); res.setHeader('X-Content-Type-Options','nosniff');
-    res.setHeader('Referrer-Policy','no-referrer');
-    res.setHeader('Permissions-Policy','camera=(), microphone=(), geolocation=(), payment=(), usb=()');
-    res.setHeader('Content-Security-Policy',"default-src 'none'; sandbox");
-    try {
-      if(req.headers.host!==new URL(config.gameOrigin).host) fail('INVALID_HOST',403);
-      if(!['GET','HEAD'].includes(req.method)) fail('METHOD_NOT_ALLOWED',405);
-      const match=/^\/g\/([a-f0-9]{64})\/(.+)$/.exec(new URL(req.url,config.gameOrigin).pathname);
-      const ticket=match&&tickets.get(match[1]);
-      if(!ticket || ticket.expires<=Date.now()) fail('NOT_FOUND',404);
-      const v=ticket.subjectId?await competition.reviewVersion(ticket.context,ticket.subjectId):ticket.context?await uploads.preview(ticket.context,ticket.version.work_id,ticket.version.id):await uploads.published(ticket.version.work_id);
-      if(v.id!==ticket.version.id) fail('VERSION_CHANGED',409);
-      const base=`${config.gameOrigin}/g/${match[1]}/`,external=v.metadata.domains.join(' ');
-      res.setHeader('Content-Security-Policy',`default-src 'none'; sandbox allow-scripts; script-src ${base} 'unsafe-inline' ${external}; style-src ${base} 'unsafe-inline' ${external}; img-src ${base} data: ${external}; media-src ${base} ${external}; font-src ${base} ${external}; connect-src ${base} ${external}; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors ${config.mainOrigin}`);
-      // Opaque sandbox origins need CORS for module scripts and fetch of package assets.
-      res.setHeader('Access-Control-Allow-Origin','*');
-      const path=decodeURIComponent(match[2]);
-      let data;
-      if(path==='__platform_bridge.mjs') { data=await readFile(new URL('../../../../frontend/bridge.mjs',import.meta.url)); res.setHeader('Content-Type','text/javascript'); }
-      else {
-        if(cached?.id!==v.id || cached.digest!==v.digest){
-          const bytes=await storage.get(ticket.context?'review':'release',v.id,{digest:v.digest});
-          if(createHash('sha256').update(bytes).digest('hex')!==v.digest)fail('ASSET_INTEGRITY',503);
-          cached={id:v.id,digest:v.digest,...await inspectZip(bytes,limits)};
-        }
-        const archive=cached;
-        data=archive.files.get(path);
-        if(!data) fail('NOT_FOUND',404);
-        res.setHeader('Content-Type',(mime[path.split('.').at(-1).toLowerCase()]??'application/octet-stream')+'; charset=utf-8');
-        if(path==='index.html') data=Buffer.concat([Buffer.from('<script src="__platform_bridge.mjs"></script>'),data]);
+  async function authorize(token) {
+    const ticket=tickets.get(token);
+    if(!ticket || ticket.expires<=Date.now()) fail('NOT_FOUND',404);
+    const version=ticket.subjectId?await competition.reviewVersion(ticket.context,ticket.subjectId):ticket.context?await uploads.preview(ticket.context,ticket.version.work_id,ticket.version.id):await uploads.published(ticket.version.work_id);
+    if(version.id!==ticket.version.id) fail('VERSION_CHANGED',409);
+    return {version,preview:Boolean(ticket.context)};
+  }
+  const game=isolated?null:createGameListener({config,authorize:async(token)=> (await authorize(token)).version,
+    readAsset:async(v,path,token)=>{
+      const ticket=tickets.get(token);
+      if(cached?.id!==v.id || cached.digest!==v.digest){
+        const bytes=await storage.get(ticket.context?'review':'release',v.id,{digest:v.digest});
+        if(createHash('sha256').update(bytes).digest('hex')!==v.digest)fail('ASSET_INTEGRITY',503);
+        cached={id:v.id,digest:v.digest,...await inspectZip(bytes,limits)};
       }
-      res.writeHead(200);res.end(req.method==='HEAD'?undefined:data);
-    } catch(error) {const result=publicError(error,'game');res.writeHead(result.status);res.end(JSON.stringify(result.body));}
-  });
+      const data=cached.files.get(path);if(!data)fail('NOT_FOUND',404);return data;
+    }});
   const dispose=()=>{for(const id of transfers.keys())discard(id);tickets.clear();cached=null;};
-  return {main,game,dispose};
+  return {main,game,dispose,authorize};
 }
