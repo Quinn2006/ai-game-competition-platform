@@ -152,7 +152,7 @@ test('production runtime: real PostgreSQL, NTFS objects and ClamAV upload/review
       // Worker death does not terminate main; readiness becomes unavailable.
       const game=await callChannel(separate.runtime.control,{action:'health'});
       if(external){
-        await writeFile(join(root,'fault-ready.json'),JSON.stringify({phase:'kill-game',gamePid:game.pid}));
+        await writeFile(join(root,'fault-ready.json'),JSON.stringify({phase:'kill-game',gamePid:game.pid,mainAddress:runtime.app.address(),mainHost:new URL(config.mainOrigin).host}));
         let acknowledged=false;
         for(let i=0;i<200;i++){try{await readFile(join(root,'fault-done'));acknowledged=true;break;}catch{}await new Promise(r=>setTimeout(r,100));}
         assert.equal(acknowledged,true,'privileged harness must terminate only its owned game job');
@@ -164,6 +164,6 @@ test('production runtime: real PostgreSQL, NTFS objects and ClamAV upload/review
     await runtime.stop();assert.equal(runtime.app.listening,false);
     if(!isolated)assert.equal(runtime.games.game.listening,false);
     await separate?.stop();
-    console.log('PASS: production assembly with real PostgreSQL/storage/ClamAV; ACL probe and seeded sessions are test fixtures; no production DB or public deployment');
+    console.log(external?'PASS: dedicated accounts, real ACL/PostgreSQL/ClamAV and resource containment; seeded sessions and non-production DB TLS remain fixtures':'PASS: production assembly with real PostgreSQL/storage/ClamAV; ACL probe and seeded sessions are test fixtures; no production DB or public deployment');
   } finally {await separate?.stop();if(runtime)await runtime.stop();else if(!startupAttempted)await database.end();}
 });

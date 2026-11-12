@@ -1,6 +1,6 @@
 # 生产运行隔离实现与验收
 
-2026-11-11。代码已拆分；专用 Windows 账号与 WFP 策略尚未执行验收，因此不能宣称生产隔离全部完成。
+2026-11-12。主站、试玩和 ZIP 校验已拆分；三个专用 Windows 账号、NTFS、WFP、Job 限制及完整业务链路已在一次性环境实际验收。此结果不等于正式生产部署、数据库 TLS 或公网验收完成。
 
 ## 进程和信任边界
 
@@ -22,11 +22,11 @@
 
 使用 Windows 本机命名管道，主站授权、校验、试玩健康检查各使用不同的 256 位随机服务密钥。服务密钥与主站会话密钥分离，由对应角色配置目录的 ACL 保护。请求和响应分别使用 HMAC-SHA256；签名绑定服务名、方向及请求随机 nonce，校验时间窗并拒绝重复 nonce。响应还必须绑定原请求 nonce，防止伪造管道返回许可。未知身份、错误签名、重放、超时或通道消失均拒绝分发。
 
-这证明的是持有专用服务凭据的身份，不是 Node API 直接查询 Windows 对端 SID。真实跨账号管道可达性与凭据 ACL 仍需下述系统验收。消息、连接和并发数量均有限制；日志不输出管道凭据、会话或完整试玩票据。
+应用层认证证明持有专用服务凭据，不是 Node API 直接查询 Windows 对端 SID。监督器等待管道建立，核对创建者 SID，再用同一原生句柄设置受保护 DACL：仅 SYSTEM、Administrators、服务端账号和指定客户端账号可访问。主站授权管道只向试玩账号开放，校验和试玩控制管道只向主站开放，不向 Everyone 放行。真实跨账号调用和无关账号拒绝已通过下述验收。消息、连接和并发数量均有限制；日志不输出管道凭据、会话或完整试玩票据。
 
 ## Windows 安装、启动与回滚
 
-`scripts/production-isolation.ps1` 默认只输出 Plan。安装只接受 `tmp/`（验收）或 `data/submissions/` 下全新的独立目录，拒绝既有目录和 reparse point。复制源代码使用 backend/frontend/node_modules/package.json 白名单，不复制 `.env`、data、Git 或备份；不另建源码项目。
+`scripts/production-isolation.ps1` 默认只输出 Plan。安装只接受 `tmp/`（验收）或 `data/submissions/` 下全新的独立目录，拒绝既有目录和 reparse point。复制源代码使用 backend/frontend/node_modules/package.json 及 database/migrations 白名单，迁移文件供启动时核验使用；不复制 `.env`、data、Git 或备份，不另建源码项目。
 
 安装创建三个随机强密码的本地非管理员账号，凭据通过 DPAPI `Export-Clixml` 保存，仅管理员和 SYSTEM 可读；启动需使用执行安装的同一管理员身份解密。运行环境由白名单重新构建，试玩和校验不会继承调用者环境。主站凭据文件只进入 `main/main.env`，生产数据库名、角色和 `verify-full` 要求仍由现有配置验证，安装程序不迁移或启动数据库。
 
@@ -51,7 +51,7 @@
 .\scripts\production-isolation.ps1 -Action Plan -Root D:\AI-project\Codex-project1\tmp\isolation-os-20261111
 ```
 
-系统验收待批准的精确范围：
+本次用户已确认并执行的系统验收范围：
 
 - 新目录 `D:\AI-project\Codex-project1\tmp\isolation-os-20261111`。
 - 新账号 `agp15a2167d4bm`、`agp15a2167d4bg`、`agp15a2167d4bv`。
@@ -61,7 +61,7 @@
 - 本地测试监听 4372/4373，复用独立 ClamAV 3311；数据库拒绝探针目标为 55673。
 - 不注册服务、不启用公网、不读取 Tunnel 配置或现有秘密。
 
-获批后在管理员 PowerShell 执行，不能在普通终端把模拟结果当成完成：
+以后复验仍需准备全新空测试库，并在管理员 PowerShell 执行以下流程；不能把普通终端的模拟结果当成完成：
 
 ```powershell
 $root='D:\AI-project\Codex-project1\tmp\isolation-os-20261111'
@@ -73,12 +73,19 @@ $root='D:\AI-project\Codex-project1\tmp\isolation-os-20261111'
 
 前提：独立真实 ClamAV 已在 127.0.0.1:3311 就绪。测试完按新建集群的绝对 data 路径使用 pg_ctl 正常关闭，不操作 data/postgres；停止本次专属扫描器。
 
-验收使用合成 canary，要求试玩无法读写数据库/审核/备份/密钥替身，能读但不能写分发文件，真实跨账号认证管道成功；网络探针必须得到 `EACCES`，连接拒绝或超时均不算网络隔离通过。校验必须能连接真实扫描器，不能连接其他目标。`-DatabaseState` 会进一步在三个专用账号、真实 Job 与 WFP 限制下运行完整 HTTP 流程，使用真实主站账号 ACL 探针；故障检查由监督器只终止其持有的试玩 Job，随后主站验证存活及 readiness 503。该分支已准备并完成语法检查，但尚未执行。
+验收使用合成 canary，要求试玩无法读写数据库/审核/备份/密钥替身，能读但不能写分发文件，真实跨账号认证管道成功；网络探针必须得到 `EACCES`，连接拒绝或超时均不算网络隔离通过。校验必须能连接真实扫描器，不能连接其他目标，也不能访问主站授权管道（Windows 返回 `EPERM` 或 `EACCES`）。`-DatabaseState` 会进一步在三个专用账号、真实 Job 与 WFP 限制下运行完整 HTTP 流程，使用真实主站账号 ACL 探针；故障检查由监督器只终止其持有的试玩 Job，随后验证主站存活及 readiness 503，并以试玩账号施加内存/CPU 压力检查主站响应。上述分支已经实际执行。
+
+`scripts/run-windows-isolation-acceptance.ps1 -EvidenceDirectory <新的验收证据目录>` 封装本次固定目录的安装、测试和 finally 卸载；证据目录必须位于项目 `tmp/isolation-acceptance-` 前缀下。可加 `-PermissionsOnly` 仅重验账号、目录、网络和管道，避免对已含测试数据的库再次运行业务测试。只导出合成报告，不复制密钥、凭据或作品。重试仅归档已卸载的本次运行目录为唯一 `.bak`，不覆盖历史现场。
 
 安装中途失败保留清单和现场，按同一个 Root 执行 Uninstall；它先确认没有该目录的存活 Node 进程，再删除精确记录的过滤器和新建账号，核对 SID/描述防止误删。不删除文件或数据库；保留保护目录供复查。账号删除不可恢复原 SID，重新验收需新目录/新账号。安装前既有配置没有被覆盖，无需恢复原文件。生产安装需单独提供 `MainEnvironmentFile` 和实际 HTTPS 来源；不要把文档示例域名用于真实部署。
 
 ## 已取得证据
 
+- 2026-11-12 专用账号完整业务及资源验收：`tmp/isolation-acceptance-20261112/attempt4/status.json` 为 passed/cleanup 均 true；主站/校验/试玩 PID 为 15524/16296/28980。真实主站账号 ACL、PostgreSQL 55673、ClamAV 3311、上传到撤销链路和试玩终止后的主站存活全部通过。登录会话仍为合成夹具。
+- 实际测试库 `data/global/pg_control` 对三个应用账号的读/写句柄均拒绝；试玩对分发文件只读，对私有原件/审核/备份/主站密钥 canary 均不可读写；工作进程没有继承数据库或会话秘密环境变量。试玩 IPv4/IPv6 出站和校验非扫描目标均为 `EACCES`，校验仅扫描端口成功连接。
+- `attempt4/resource-evidence.json`：试玩账号 256 MiB Job 拒绝 640 MiB 分配，主站仍返回 200；测试专用 1% CPU 上限下实测约 1.15%（5 秒采样，验收容差 3%），主站五次请求均为 200，耗时 2–15 毫秒；Job 关闭后压力进程消失。该短时检查不代表长期容量验收。
+- 首轮系统执行发现并修复了 Node 默认管道 ACL 不允许跨账号连接、部署目录缺少迁移校验文件。无关账号管道探针实际返回 `EPERM`，断言已兼容两种明确的权限拒绝码；不会将超时、断连或连接成功判为权限隔离通过。
+- 最终权限复验 `tmp/isolation-acceptance-20261112/attempt6/status.json` 为 passed/cleanup 均 true，校验账号的 `unauthorizedPipe` 为 `EPERM`。每轮卸载均调用原生 WFP API 删除六条记录规则；最终三个专用账号均不存在。本次 PostgreSQL 和 ClamAV 已正常停止，3311/4370/4371/4372/4373/55673 无监听。受保护测试目录及 `.bak` 归档保留供管理员核查，账号删除后不应直接复用其旧 SID ACL；重验使用新安装。没有改动主库或 Tunnel 配置，没有公网发布。
 - 三次独立 PostgreSQL + 真实 ClamAV + 生产文件驱动 HTTP 链路通过。三进程 PID 分别为 5084/34732/19340、11360/2156/17888、10832/28036/35884；主站在测试 runner 内运行，子服务使用清空的环境。
 - 上传→扫描→作者预览→审核→匿名试玩→撤销通过；文件/.meta 替换拒绝审核，最终资源被篡改后返回 503，撤销后资源和桥接脚本返回 404，撤回后旧作者预览票据失效。强制结束试玩后主站 `/health/live` 200、`/health/ready` 503。
 - 独立校验进程的真实 ClamAV 测试通过：畸形 ZIP、超量展开、EICAR、输入摘要篡改均拒绝，干净文件生成清单并晋级；进程退出后管道不可连接。
@@ -88,4 +95,4 @@ $root='D:\AI-project\Codex-project1\tmp\isolation-os-20261111'
 - `agent-browser` 本地 HTTP 浏览器检查：桌面和 390×844 视口加载独立 iframe，重新开始正常，sandbox 为 allow-scripts，无页面脚本错误；截图在 `preview/isolation-desktop.png`、`preview/isolation-mobile.png`。不是公网 HTTPS/TLS 验收。
 - 最终回归：`npm run check` 128 模块；开启真实 ACL 后 `npm test` 86/86 通过、无跳过；`npm run check:baseline` 130 需求/18 决策；PowerShell 语法、C# 编译和 `git diff --check` 通过。测试专属数据库、扫描器和网站进程已停止，4370/4371/3311/55672/55673/55674 无监听。
 
-PostgreSQL/登录会话/存储 ACL 仍有夹具：数据库只在全新 `ai_games_test` 中模拟生产环境标识；已执行集成中的 ACL 探针与登录会话是测试注入。专用账号、WFP、真实生产 PostgreSQL TLS、全程专用账号业务与账号级故障恢复尚未实测。本次不能据此批准正式上线。
+边界：数据库只在全新 `ai_games_test` 中模拟生产环境标识，连接使用测试池，登录会话为合成夹具；早期同用户集成使用注入 ACL 探针，2026-11-12 的专用账号分支已替换为真实主站账号 ACL 检查。真实生产 PostgreSQL TLS、正式环境安装、登录/MFA、公网 HTTPS、长期容量、断电恢复、服务注册和灾备仍未在本次验收。当前仍为 100,000,000 字节上传限制和内存分块，200 MB 持久续传、时段开关与完整备份不属于本次隔离实现。本次不能据此批准正式上线。

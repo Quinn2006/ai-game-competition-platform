@@ -1,4 +1,4 @@
-param([Parameter(Mandatory)][string]$Root,[string]$DatabaseState)
+param([Parameter(Mandatory)][string]$Root,[string]$DatabaseState,[switch]$PermissionsOnly)
 $ErrorActionPreference='Stop'
 $Root=[IO.Path]::GetFullPath($Root)
 $project=Split-Path -Parent $PSScriptRoot
@@ -6,6 +6,8 @@ if(-not $Root.StartsWith(($project+'\tmp\'),[StringComparison]::OrdinalIgnoreCas
 $state=Get-Content -LiteralPath (Join-Path $Root 'installation.json') -Raw | ConvertFrom-Json
 if($state.root -ne $Root -or -not $state.complete){throw 'Complete matching installation required'}
 Add-Type -Path (Join-Path $PSScriptRoot 'windows-isolation.cs')
+. (Join-Path $PSScriptRoot 'isolation-pipes.ps1')
+. (Join-Path $PSScriptRoot 'isolation-resource-acceptance.ps1')
 [AgpNetwork]::AssertInstalled([string[]]$state.filters)
 $databaseFile=$null
 if($DatabaseState){
@@ -40,6 +42,7 @@ try {
     if($databaseFile){$arguments+=' "'+$databaseFile+'"'}
     $job=[AgpJob]::new((Join-Path $dir 'node.exe'),$arguments,(Join-Path $Root 'code'),$environment,$credential.UserName,$credential.GetNetworkCredential().Password,256,20,1)
     $jobs+=$job;$output=Join-Path $dir 'temp\acceptance.json'
+    if($role -eq 'main'){Grant-AgpPipe $state $Root $role}
     $timer=[Diagnostics.Stopwatch]::StartNew()
     while(-not(Test-Path -LiteralPath $output) -and -not $job.Exited -and $timer.Elapsed.TotalSeconds -lt 30){Start-Sleep -Milliseconds 100}
     if(-not(Test-Path -LiteralPath $output)){throw "$role probe failed; exit $($job.ExitCode)"}
@@ -54,6 +57,7 @@ try {
     if($role -eq 'game'){
       if(-not $result.files.'serving/probe-readable'.read -or $result.files.'serving/probe-readable'.write -or -not $result.authenticatedPipe){throw 'Game serving or cross-account pipe boundary failed'}
     }
+    if($role -eq 'validator' -and $result.unauthorizedPipe -notin @('EACCES','EPERM')){throw "Unrelated account authorization pipe result $($result.unauthorizedPipe); expected permission denial"}
     if($role -ne 'main'){
       foreach($name in @('database','unrelated','ipv6','external','scanner')){
         $expected=if($role -eq 'validator' -and $name -eq 'scanner'){'connected'}else{'EACCES'}
@@ -68,7 +72,7 @@ try {
   foreach($job in $jobs){$job.Dispose()}
   foreach($listener in $listeners){$listener.Stop()}
 }
-if($DatabaseState){
+if($DatabaseState -and -not $PermissionsOnly){
   # Explicitly supplied disposable state, never discover/read the main database.
   $envFile=Join-Path $Root 'main\test.env'
   New-Item -ItemType File -Path $envFile -Value ('DATABASE_URL='+$database.databaseTest) | Out-Null
@@ -88,7 +92,7 @@ if($DatabaseState){
         $memory=if($role -eq 'game'){256}else{768};$cpu=if($role -eq 'game'){15}else{25};$count=1
       }
       $jobs[$role]=[AgpJob]::new((Join-Path $dir 'node.exe'),$arguments,(Join-Path $Root 'code'),[string[]]$environment,$credential.UserName,$credential.GetNetworkCredential().Password,$memory,$cpu,$count)
-      if($role -ne 'main'){Start-Sleep -Seconds 2}
+      Grant-AgpPipe $state $Root $role
     }
     $timer=[Diagnostics.Stopwatch]::StartNew();$faultDone=$false
     while(-not $jobs.main.Exited -and $timer.Elapsed.TotalSeconds -lt 120){
@@ -96,7 +100,9 @@ if($DatabaseState){
       if(-not $faultDone -and (Test-Path -LiteralPath $checkpoint)){
         $fault=Get-Content -LiteralPath $checkpoint -Raw | ConvertFrom-Json
         if($fault.phase -ne 'kill-game' -or $fault.gamePid -ne $jobs.game.Pid){throw 'Fault checkpoint does not match the owned game process'}
-        $jobs.game.Dispose();$faultDone=$true
+        $jobs.game.Dispose()
+        Test-AgpResourceContainment $Root $fault
+        $faultDone=$true
         New-Item -ItemType File -Path (Join-Path $Root 'private\fault-done') -Value 'owned game job closed' | Out-Null
       }
       Start-Sleep -Milliseconds 100

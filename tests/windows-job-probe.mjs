@@ -16,5 +16,5 @@ if(mode==='child') {
   catch {await writeFile(output,'allocation-refused');}
 } else if(mode==='cpu') {
   await writeFile(output,'started');
-  for(let i=0;i<8;i++)new Worker('while(true){}',{eval:true});
+  for(let i=0;i<2;i++)new Worker('while(true){}',{eval:true});
 } else throw Error('Unknown probe');

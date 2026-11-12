@@ -135,3 +135,34 @@ public static class AgpNetwork {
     finally{FwpmEngineClose0(engine);}
   }
 }
+
+// Node/libuv's default pipe DACL is account-local. Grant only the configured
+// client SID after verifying the creating service SID; never grant Everyone.
+public static class AgpPipe {
+  [DllImport("advapi32.dll")] static extern uint GetSecurityInfo(IntPtr handle,uint kind,uint info,out IntPtr owner,out IntPtr group,out IntPtr dacl,out IntPtr sacl,out IntPtr descriptor);
+  [DllImport("advapi32.dll")] static extern uint SetSecurityInfo(IntPtr handle,uint kind,uint info,IntPtr owner,IntPtr group,IntPtr dacl,IntPtr sacl);
+  [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern IntPtr CreateFileW(string name,uint access,uint share,IntPtr attributes,uint disposition,uint flags,IntPtr template);
+  [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr handle);
+  [DllImport("advapi32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern bool ConvertStringSecurityDescriptorToSecurityDescriptorW(string text,uint revision,out IntPtr descriptor,out uint size);
+  [DllImport("advapi32.dll",SetLastError=true)] static extern bool GetSecurityDescriptorDacl(IntPtr descriptor,out bool present,out IntPtr dacl,out bool defaulted);
+  [DllImport("kernel32.dll")] static extern IntPtr LocalFree(IntPtr memory);
+  public static void Grant(string name,string serverSid,string clientSid) {
+    if(!name.StartsWith("\\\\.\\pipe\\agp-",StringComparison.Ordinal))throw new ArgumentException("Invalid pipe");
+    var server=new System.Security.Principal.SecurityIdentifier(serverSid);var client=new System.Security.Principal.SecurityIdentifier(clientSid);
+    IntPtr pipe=CreateFileW(name,0x60000,3,IntPtr.Zero,3,0,IntPtr.Zero);
+    if(pipe==new IntPtr(-1))throw new Win32Exception(Marshal.GetLastWin32Error());
+    try {
+    IntPtr owner,group,dacl,sacl,original;uint status=GetSecurityInfo(pipe,6,1,out owner,out group,out dacl,out sacl,out original);
+    if(status!=0)throw new Win32Exception((int)status);
+    try{if(new System.Security.Principal.SecurityIdentifier(owner).Value!=server.Value)throw new InvalidOperationException("Pipe owner mismatch");}
+    finally{LocalFree(original);}
+    IntPtr descriptor;uint length;
+    if(!ConvertStringSecurityDescriptorToSecurityDescriptorW("D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;"+server.Value+")(A;;GRGW;;;"+client.Value+")",1,out descriptor,out length))throw new Win32Exception(Marshal.GetLastWin32Error());
+    try{
+      bool present,defaulted;if(!GetSecurityDescriptorDacl(descriptor,out present,out dacl,out defaulted)||!present)throw new Win32Exception(Marshal.GetLastWin32Error());
+      status=SetSecurityInfo(pipe,6,0x80000004,IntPtr.Zero,IntPtr.Zero,dacl,IntPtr.Zero);
+      if(status!=0)throw new Win32Exception((int)status);
+    }finally{LocalFree(descriptor);}
+    }finally{CloseHandle(pipe);}
+  }
+}

@@ -27,6 +27,15 @@ if(role==='main'){
       socket.on('error',error=>{clearTimeout(timer);resolve(error.code);});
     });
   }
-  if(role==='game')result.authenticatedPipe=(await callChannel(config.auth,{action:'probe'})).ok;
+  if(role==='game'){
+    try{result.authenticatedPipe=(await callChannel(config.auth,{action:'probe'})).ok;}
+    catch(error){result.pipeError=error.code;result.authenticatedPipe=false;}
+  }
+  if(role==='validator')result.unauthorizedPipe=await new Promise(resolve=>{
+    const socket=createConnection(config.validator.pipe.replace(/-validator$/,'-auth'));
+    const timer=setTimeout(()=>{socket.destroy();resolve('timeout');},2000);
+    socket.on('connect',()=>{clearTimeout(timer);socket.destroy();resolve('connected');});
+    socket.on('error',error=>{clearTimeout(timer);resolve(error.code);});
+  });
   await writeFile(output,JSON.stringify(result));
 }

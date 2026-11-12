@@ -46,6 +46,7 @@ if($Action -eq 'Plan') {
 }
 if(-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){throw 'Run the reviewed operation in elevated PowerShell after explicit approval.'}
 Add-Type -Path (Join-Path $PSScriptRoot 'windows-isolation.cs')
+. (Join-Path $PSScriptRoot 'isolation-pipes.ps1')
 if($Action -eq 'Install') {
   if(Test-Path -LiteralPath $Root){throw 'Refusing to reuse any existing installation directory'}
   Assert-PlainPath (Split-Path -Parent $Root)
@@ -90,10 +91,12 @@ if($Action -eq 'Install') {
     }
     # Deliberate allowlist: never copy data, .env, repository metadata or backups.
     foreach($dir in @('backend','frontend','node_modules')){Copy-Item -LiteralPath (Join-Path $project $dir) -Destination (Join-Path $Root 'code') -Recurse}
+    New-Item -ItemType Directory -Path (Join-Path $Root 'code\database') | Out-Null
+    Copy-Item -LiteralPath (Join-Path $project 'database\migrations') -Destination (Join-Path $Root 'code\database') -Recurse
     Copy-Item -LiteralPath (Join-Path $project 'package.json') -Destination (Join-Path $Root 'code')
     New-Item -ItemType Directory -Path (Join-Path $Root 'code\tests') | Out-Null
     if($Root.StartsWith(($project+'\tmp\'),[StringComparison]::OrdinalIgnoreCase)){
-      foreach($file in @('windows-isolation-probe.mjs','isolation-fixture.mjs','zip-fixture.mjs')){Copy-Item -LiteralPath (Join-Path $project ('tests\'+$file)) -Destination (Join-Path $Root 'code\tests')}
+      foreach($file in @('windows-isolation-probe.mjs','windows-job-probe.mjs','isolation-fixture.mjs','zip-fixture.mjs')){Copy-Item -LiteralPath (Join-Path $project ('tests\'+$file)) -Destination (Join-Path $Root 'code\tests')}
       New-Item -ItemType Directory -Path (Join-Path $Root 'code\tests\integration') | Out-Null
       Copy-Item -LiteralPath (Join-Path $project 'tests\integration\production-runtime.test.mjs') -Destination (Join-Path $Root 'code\tests\integration')
     }
@@ -162,8 +165,7 @@ try {
     $job=[AgpJob]::new((Join-Path $dir 'node.exe'),$arguments,(Join-Path $Root 'code'),[string[]]$environment,$credential.UserName,$credential.GetNetworkCredential().Password,$memory,$cpu,$count)
     $jobs+=@{role=$role;job=$job}
     Write-Output "$role PID $($job.Pid)"
-    # Main dependencies require the validator pipe before opening its listener.
-    if($role -eq 'validator'){Start-Sleep -Seconds 2}
+    Grant-AgpPipe $state $Root $role
   }
   Write-Output 'Supervisor active. Ctrl+C stops all owned process trees; no public tunnel is started.'
   while($true){
