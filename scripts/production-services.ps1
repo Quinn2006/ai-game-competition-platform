@@ -17,7 +17,8 @@ if($Action -eq 'Plan'){
     triggers='None: no task registration, startup trigger or time-of-day restriction';
     postgres=$config.databaseService;database='ai_games_production only; no development import';
     configuration=$ConfigFile;rollback='Manual Stop closes ingress, drains writers, verifies backup and stops database. All data and evidence retained';
-    prerequisites='Reviewed PostgreSQL Windows service, trusted TLS, isolated installation, distinct physical backup disk, separate protected recovery material';
+    backupPolicy=$(if($config.backupPolicy -eq 'local-only'){'Explicit local-only exception; off-disk disaster recovery NOT verified'}else{'Distinct physical backup disk required'});
+    prerequisites='Reviewed PostgreSQL Windows service, trusted TLS, isolated installation, approved backup policy, separate protected recovery material';
     shutdown='User-controlled start/stop only; never automatic Windows shutdown or power-on'} | Format-List
   return
 }

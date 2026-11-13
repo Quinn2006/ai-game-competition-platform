@@ -25,7 +25,7 @@
 
 ## 部署前收集和批准
 
-实际参数必须由操作者填写并复核，不生成带占位符的运行配置。当前只确认沿用本机与现有域名，仍缺主站/试玩域名和另一物理磁盘目标。C:、D: 均在物理磁盘 0，不能作为彼此的异盘灾备。
+实际参数必须由操作者填写并复核，不生成带占位符的运行配置。2026-11-13 已从现有验收记录确认主站 `https://wsyz-aigames.de5.net`、试玩 `https://wsyz-play.us.ci`。C:、D: 均在物理磁盘 0，不能作为彼此的异盘灾备。用户选择新建空生产库，并接受暂缺异盘备份；实际安装方案和范围见 [本机正式安装记录](production-installation-2026-11-13.md)。安装与验收状态以该记录为准。
 
 非敏感控制 JSON 需要：projectRoot、installationRoot、backupRoot、stagingRoot、evidenceRoot、offDiskRoot、recoveryMaterialFile、pgBin、caFile、pwsh、maintenanceEnvironmentFile、databaseService、databaseDirectory、databaseControlRoot、scannerExe、scannerConfig、healthUrl、tunnelAdapter。所有路径采用实际绝对路径。healthUrl 只能指向隔离安装器的本机主站 readiness；tunnelAdapter 指向现有 start-local.ps1。databaseService 须为 AGP-PostgreSQL- 前缀的专用名称。
 
@@ -91,6 +91,8 @@ Stop/运行中的 Backup：先关闭公网入口及许可 → 拒绝新业务请
 keys 仅在已经保护的独立目录创建随机加密密钥与原 SESSION_SECRET 恢复材料，禁止打印密钥。包只含 keyId。pg_dump 的明文工作副本保留在受控 staging；失败现场和演练恢复目录也含隐私，不能当作已加密灾备或复制到普通共享目录。清理这些现场需单独核对和批准，不能随意删除。
 
 本地成功后才复制到 offDiskRoot，再核验全部密文字节、认证及摘要。Get-Partition/Get-Disk 必须证明来源与目标不属于同一物理磁盘；无法证明、虚拟盘、存储空间或断开的目标均不算成功。异盘失败时仍报告本地副本状态与安全停库状态，不能宣称灾备完成。
+
+用户在 2026-11-13 明确接受暂缺异盘后，控制器增加显式 `backupPolicy=local-only`、`localOnlyAcknowledged=true` 的例外；不得填写虚构 offDiskRoot。此模式仍要求加密本地备份及验证成功，`offDiskVerified`、`disasterRecoveryVerified` 始终 false；`backupVerified` 仅表示满足选定策略。缺省策略仍是异盘，不自动降级、不改变 DifferentDisk 或保留清理的校验条件。
 
 初始保留策略可采用每日 7、每周 4、每月 3，但应由操作者按容量确认。retention plan 验证所有包和异盘副本；不完整包导致清理拒绝。apply 要求当前计划未变及 APPROVED_RETENTION_SHA256。仅删除明确候选的本地目录，保留最新和各周期份数；每个删除对象均有已核验异盘恢复副本，脚本不删除远端最后副本。恢复方法是将对应异盘包复制回新本地目录后完整 verify。
 

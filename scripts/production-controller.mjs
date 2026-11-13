@@ -8,16 +8,18 @@ import { runTool, backupProduction, verifyReferences } from './production-backup
 import { databaseReady } from '../backend/src/platform/migrations.mjs';
 import { recoveryMaterial, copyBundle, plain } from './recovery-store.mjs';
 import { connect } from './production-database.mjs';
+import { backupPolicy, completeBackup } from './production-backup-policy.mjs';
 
 const scripts=fileURLToPath(new URL('./',import.meta.url));
 export async function runController(config,{requestedAt=Date.now(),backupOnly=false}={}){
+  const policy=backupPolicy(config);
   // A Windows FileShare.None lock is held by the PowerShell host before this
   // process starts. This entry is only callable by that host in production.
   for(const p of [config.installationRoot,config.backupRoot,config.stagingRoot,config.evidenceRoot])await plain(p,true);
   const mainEnvironment=JSON.parse(await readFile(join(config.installationRoot,'main','environment.json'),'utf8'));
   if(config.healthUrl!==`http://${mainEnvironment.HOST}:${mainEnvironment.PORT}/health/ready`)throw Error('Readiness target differs from installation');
   const under=(child,parent)=>{const r=relative(resolve(parent),resolve(child));return !r||!r.startsWith('..')&&!isAbsolute(r);};
-  if([config.installationRoot,config.backupRoot,config.stagingRoot,config.offDiskRoot].some(p=>under(config.recoveryMaterialFile,p)))throw Error('Recovery material must be separately controlled');
+  if([config.installationRoot,config.backupRoot,config.stagingRoot,config.offDiskRoot].filter(Boolean).some(p=>under(config.recoveryMaterialFile,p)))throw Error('Recovery material must be separately controlled');
   if(under(config.backupRoot,config.installationRoot)||under(config.stagingRoot,config.installationRoot)||under(config.stagingRoot,config.backupRoot))throw Error('Backup/staging trees overlap runtime data');
   const availability=join(config.installationRoot,'main','availability.json');
   const journal=join(config.evidenceRoot,'controller-state.json');
@@ -26,7 +28,7 @@ export async function runController(config,{requestedAt=Date.now(),backupOnly=fa
   let previous;
   try{previous=JSON.parse(await readFile(journal,'utf8'));}catch(e){if(e.code!=='ENOENT')throw e;}
   const saveState=async state=>{const p=journal+'.'+randomUUID()+'.tmp';await writeFile(p,JSON.stringify(state),{flag:'wx'});await rename(p,journal);};
-  const owned=new Map();let stop=false,writerStartedAt=0;
+  const owned=new Map();let stop=false,writerStartedAt=0,lastBackup;
   const lease=async state=>{
     const issuedAt=Date.now(),temporary=availability+'.'+randomUUID()+'.tmp';
     await writeFile(temporary,JSON.stringify({version:1,state,issuedAt,expiresAt:issuedAt+(state==='warming'?120000:12000)}),{flag:'wx'});
@@ -100,15 +102,17 @@ export async function runController(config,{requestedAt=Date.now(),backupOnly=fa
       const id=new Date().toISOString().replace(/[:.]/g,'-')+'-'+randomUUID();
       const material=await recoveryMaterial(config.recoveryMaterialFile);
       const destination=join(config.backupRoot,id);
-      const reportPath=join(config.evidenceRoot,id+'.backup.json'),report={localBackupVerified:false,offDiskVerified:false};
-      await writeFile(reportPath,JSON.stringify(report),{flag:'wx'});
-      await backupProduction({url:process.env.PRODUCTION_MIGRATION_URL,dumpUrl:process.env.PRODUCTION_BACKUP_URL,
+      const reportPath=join(config.evidenceRoot,id+'.backup.json');
+      let firstReport=true;
+      lastBackup=undefined;
+      lastBackup=await completeBackup(config,{
+        local:()=>backupProduction({url:process.env.PRODUCTION_MIGRATION_URL,dumpUrl:process.env.PRODUCTION_BACKUP_URL,
         caFile:config.caFile,pgBin:config.pgBin,privateRoot:join(config.installationRoot,'private'),servingRoot:join(config.installationRoot,'serving'),
-        staging:join(config.stagingRoot,id),destination,material,assertStopped:()=>storageCheck('Stopped')});
-      report.localBackupVerified=true;await writeFile(reportPath,JSON.stringify(report));
-      await storageCheck('DifferentDisk','-Target',config.offDiskRoot);
-      await copyBundle(destination,join(config.offDiskRoot,id),material);
-      report.offDiskVerified=true;await writeFile(reportPath,JSON.stringify(report));
+        staging:join(config.stagingRoot,id),destination,material,assertStopped:()=>storageCheck('Stopped')}),
+        checkDisk:()=>storageCheck('DifferentDisk','-Target',config.offDiskRoot),
+        copy:()=>copyBundle(destination,join(config.offDiskRoot,id),material),
+        report:async report=>{lastBackup={...report};await writeFile(reportPath,JSON.stringify(report),{flag:firstReport?'wx':'w'});firstReport=false;},
+      });
     },
     async stopDatabase(){
       const c=await connect(process.env.PRODUCTION_MIGRATION_URL,config.caFile);
@@ -122,7 +126,8 @@ export async function runController(config,{requestedAt=Date.now(),backupOnly=fa
       await service('StopDatabase');
     },
     async report(result){
-      const report={...result,at:new Date().toISOString()};
+      const report={...result,backupPolicy:policy,localBackupVerified:lastBackup?.localBackupVerified===true,
+        offDiskVerified:lastBackup?.offDiskVerified===true,disasterRecoveryVerified:lastBackup?.disasterRecoveryVerified===true,at:new Date().toISOString()};
       await writeFile(join(config.evidenceRoot,randomUUID()+'.shutdown.json'),JSON.stringify(report),{flag:'wx'});
       previous={clean:result.ingressClosed&&result.writersStopped&&result.databaseStopped&&result.backupVerified,...report};await saveState(previous);
     },

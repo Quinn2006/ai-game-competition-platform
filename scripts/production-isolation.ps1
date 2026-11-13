@@ -12,8 +12,9 @@ param(
 $ErrorActionPreference='Stop'
 $project=Split-Path -Parent $PSScriptRoot
 $Root=[IO.Path]::GetFullPath($Root)
-if($Root -eq [IO.Path]::GetPathRoot($Root) -or $Root -eq $project -or -not ($Root.StartsWith(($project+'\tmp\'),[StringComparison]::OrdinalIgnoreCase) -or $Root.StartsWith(($project+'\data\submissions\'),[StringComparison]::OrdinalIgnoreCase))) {
-  throw 'Use a fresh dedicated directory under project tmp (acceptance) or data/submissions (production). Never target existing user data.'
+$managedRoot=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'AIGamesProduction\runtime'
+if($Root -eq [IO.Path]::GetPathRoot($Root) -or $Root -eq $project -or -not ($Root -eq $managedRoot -or $Root.StartsWith(($project+'\tmp\'),[StringComparison]::OrdinalIgnoreCase) -or $Root.StartsWith(($project+'\data\submissions\'),[StringComparison]::OrdinalIgnoreCase))) {
+  throw 'Use the dedicated ProgramData runtime, or a fresh project tmp/data/submissions directory. Never target existing user data.'
 }
 $installationId=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($Root.ToLowerInvariant()))).Substring(0,10).ToLowerInvariant()
 function Assert-PlainPath([string]$Path) {
@@ -50,7 +51,7 @@ Add-Type -Path (Join-Path $PSScriptRoot 'windows-isolation.cs')
 . (Join-Path $PSScriptRoot 'isolation-pipes.ps1')
 if($Action -eq 'Install') {
   if(Test-Path -LiteralPath $Root){throw 'Refusing to reuse any existing installation directory'}
-  if($Root.StartsWith(($project+'\data\submissions\'),[StringComparison]::OrdinalIgnoreCase)){
+  if($Root -eq $managedRoot -or $Root.StartsWith(($project+'\data\submissions\'),[StringComparison]::OrdinalIgnoreCase)){
     foreach($required in @('MainEnvironmentFile','DatabaseCaFile','MainOrigin','GameOrigin','MainPort','GamePort','ScannerPort')){if(-not $PSBoundParameters.ContainsKey($required)){throw 'Production installation requires explicit environment, CA, actual origins and approved listening ports'}}
     if($MainOrigin -match '\.example\.' -or $GameOrigin -match '\.example\.'){throw 'Example origins are not production configuration'}
   }
