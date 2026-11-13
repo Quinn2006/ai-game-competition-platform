@@ -1,3 +1,15 @@
+## 2026-11-13：生产部署与恢复实施中，改为手动启停
+
+- 基准 `main@e105609`，版本 0.3.0，接手时工作区干净。用户经来源聊天明确取消 08:00—22:00 定时开关：只有手动 Start/Stop/Backup，没有时段限制、计划任务或开机自动开放；已落实代码、测试和现行文档，旧部署计划顶部注明历史条款失效。
+- 当前实现：受控生产数据库初始化/迁移及角色分离、CA/verify-full；外部 PostgreSQL TLS/hba 配置和可回滚手动服务；沿用隔离监督器的许可与排空；AES-GCM 一致性备份、异盘识别、独立恢复、MFA 重加密/旧会话及令牌失效、012 删除账本、保留清理计划、数据库切换/回滚。操作说明 `docs/production-deployment-recovery.md`。
+- 已完成真实一次性 PostgreSQL 18.6/TLS、真实 ClamAV、HTTP 上传审核试玩、加密备份/独立恢复、恢复后登录/MFA/HTTP 试玩撤销、后续删除账本覆盖、切换回滚。最新已读证据 `tmp/production-recovery-eab78721-b0e2-491d-a5fd-2b821e8312c8/evidence.json`：passed=true、databaseStopped=true、restore.elapsedMs=1640；原库在独立恢复过程中未改动，切换/回滚仅操作该测试集群。端口 55680/3311 无监听。此集成应用 ACL 为注入探针，不是正式身份验收。
+- 已跑 138 模块语法、95 项测试（93 通过/2 ACL 跳过）、130 需求/18 决策、PowerShell 解析和 diff whitespace 检查；9 项恢复专项全部通过。原生 Windows Job 已实测控制管道关闭后进程终止、端口释放、维护凭据不继承到子进程；修复 PowerShell 环境数组拼接和同步 stdin 等待问题。
+- 用户明确回复“继续一次性服务验收”，已按授权通过 UAC 创建并测试 `AGP-PostgreSQL-Acceptance` 虚拟身份服务，仅操作新 tmp 集群和 55680/3311。最终 `tmp/production-recovery-d1e5c8fe-de9d-4e92-a697-ba99d80e8c17/evidence.json`：passed/windowsService/tlsAndRoles/cutoverRollback/laterDeletionOverlay/databaseStopped/serviceRemoved 全为 true，恢复 877 ms。外层 `tmp/service-acceptance-20261113-run5-status.json` 为 passed=true/serviceRemaining=false。最终无测试服务，55680/3311/4320/4321/55440 无监听。
+- 服务分支实际修复了 NULL 虚拟账号密码、HBA include 引号、PostgreSQL 回收 WAL 后的 ACL 回滚，以及缺失服务时清理命令退出码。前三个失败现场均未保留运行服务；run3 已恢复最初两个测试树 ACL，run5 已恢复第四轮剩余 ACL。所有现场保留，不修改/删除数据库内部数据文件。服务复验入口 `scripts/run-production-service-acceptance.ps1 -Action Plan|Run`，不复用已有目录/同名服务。现有授权覆盖这一测试服务范围的修复复验，不等于正式部署授权。
+- 参数：用户确认沿用本机与现有域名，但尚未提供两个域名；未提供异盘目录。本机 Get-Disk 仅磁盘 0，C/D 均属同盘；真实运行 DifferentDisk 检查已拒绝 C/D 互备。取消定时开关后不能再承诺夜间每日备份或约一天 RPO；损失窗口取决于最后一次成功的手动备份。
+- 未读取/输出两个受限 Tunnel 文件，未改动/启动 data/postgres 或正式数据库；除上述已清理的测试服务及新测试树 ACL 外，没有改动其他服务、计划任务、既有目录 ACL 或公网配置；没有推送/tag。现有 start-local.ps1 只新增由同一既有程序消费 Own Tunnel 的 ManagedTunnelOnly 分支，并核对与安装的公开来源一致；实际公网执行仍需授权。
+- 后续：先检查实际 Git/最终验证状态。补齐两个域名、实际身份/目录与另一物理磁盘配置，给出正式安装/原集群 ACL 范围及恢复方式并获准执行；更新后的专用应用账号监督器、完整手动控制器/公网启停、正式 TLS/ACL、异盘复制、整机重启仍待验收。不要把已通过的小型恢复（0.877—1.64 秒）当作正式 RTO。恢复包、staging 明文、测试密钥和数据库均在忽略目录，保留用于核查，不能纳入提交。
+
 ## 2026-11-12：专用账号系统隔离验收通过
 
 - 本任务基准 `main@544fc01`，初始实现提交 `69d9fd7`，版本仍为 0.3.0。主站、试玩、ZIP 校验已拆分；生产入口要求 `ISOLATION_CONFIG`，开发入口保留。当前修复和准确权限边界见 `docs/production-isolation.md`。

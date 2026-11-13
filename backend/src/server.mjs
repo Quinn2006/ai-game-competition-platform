@@ -1,6 +1,7 @@
 import { loadConfig } from './config.mjs';
 import { createLogger } from './platform/logger.mjs';
-import { createDatabase } from './platform/database.mjs';
+import { createDatabase, assertApplicationRole } from './platform/database.mjs';
+import { createAvailability } from './platform/availability.mjs';
 import { createPrivateStorage } from './platform/storage.mjs';
 import { createApp } from './app.mjs';
 import { createIdentityService } from './modules/identity/service.mjs';
@@ -23,7 +24,7 @@ import { dependenciesReady } from './platform/health.mjs';
 
 // Importing the entry point does not listen or read local credentials. Tests can
 // exercise the same assembly with disposable dependencies and real HTTP sockets.
-export async function startServer({ config = loadConfig(), log = createLogger(), database, storage, scan, scannerReady, isolation, embeddedGames = false } = {}) {
+export async function startServer({ config = loadConfig(), log = createLogger(), database, storage, scan, scannerReady, isolation, embeddedGames = false, availability = createAvailability() } = {}) {
   let app, games, channel, cleanup, cleaning = null, stopping = null;
   const close = server => new Promise(resolve => {
     if (!server) return resolve();
@@ -33,6 +34,7 @@ export async function startServer({ config = loadConfig(), log = createLogger(),
   const stop = () => {
     if (stopping) return stopping;
     stopping = (async () => {
+      availability.drain();
       clearInterval(cleanup);
       const timeout = setTimeout(() => {
         app?.closeAllConnections();games?.game?.closeAllConnections();
@@ -40,6 +42,7 @@ export async function startServer({ config = loadConfig(), log = createLogger(),
       timeout.unref();
       try {
         await Promise.all([close(app),close(games?.game)]);
+        await app?.drainHandlers();
         await channel?.close();
         games?.dispose();
         await cleaning;
@@ -63,7 +66,9 @@ export async function startServer({ config = loadConfig(), log = createLogger(),
     storage ??= config.localGames ? createLocalStorage(config.submissionsRoot,config.environment)
       : config.storage.driver === 'local' ? createPrivateStorage(config, createProductionLocalStorageDriver(config))
       : createPrivateStorage(config);
+    const injectedDatabase = Boolean(database);
     database ??= createDatabase(config, log);
+    if (config.environment === 'production' && !injectedDatabase) await assertApplicationRole(database);
     const identity = database && config.sessionSecret ? createIdentityService({ database, localAccounts:true, secret: config.sessionSecret, deletionParticipants:[deletionParticipant,discoveryDeletion,communityDeletion,competitionDeletion,operationsDeletion],
       mail: async () => { throw Error("Mail disabled for local accounts"); } }) : undefined;
     const gamesEnabled = config.localGames || config.environment === 'production';
@@ -79,6 +84,7 @@ export async function startServer({ config = loadConfig(), log = createLogger(),
     const competition = database && identity ? createCompetitionService({database,identity,onEvent:competitionNotifier(operations)}) : null;
     games = createGameHttp({config,uploads,storage,competition,isolated:Boolean(isolation),limits:config.uploadLimits,loadTimeout:config.gameLoadTimeout});
     if (isolation) channel = await serveChannel(isolation.auth, async input => {
+      if (!await availability.permits()) throw Error('Service closed');
       if (input?.action !== 'authorize' || typeof input.token !== 'string' || !/^[a-f0-9]{64}$/.test(input.token) || typeof input.path !== 'string' || input.path.length > 240) throw Error('Invalid authorization');
       const {version} = await games.authorize(input.token);
       return resourcePermit(isolation,version,input.path,config.uploadLimits);
@@ -86,7 +92,7 @@ export async function startServer({ config = loadConfig(), log = createLogger(),
     const gameReady = isolation ? async () => (await callChannel(isolation.control,{action:'health'})).ready === true : () => games.game.listening;
     const discovery = database ? createDiscoveryService({ database, identity, storage:gamesEnabled?storage:undefined }) : null;
     const community = database && identity ? createCommunityService({database,identity,secret:config.sessionSecret}) : null;
-    app = createApp({ config, database, storage, log, identity, mailbox, games:games.main, discovery, community, operations, competition,
+    app = createApp({ config, database, storage, log, identity, mailbox, games:games.main, discovery, community, operations, competition, availability,
       readinessChecks:[...readinessChecks,...(gamesEnabled?[gameReady]:[])] });
     if(gamesEnabled && !isolation) {
       const origin=new URL(config.gameListenOrigin);
@@ -100,9 +106,9 @@ export async function startServer({ config = loadConfig(), log = createLogger(),
     };
     app.on('error',failed);games.game?.on('error',failed);
     cleanup = identity ? setInterval(() => {
-      if (cleaning) return;
+      if (cleaning || stopping) return;
       cleaning = (async () => {
-        try { await competition?.daily(); await competition?.cleanup(); await identity.cleanup(); await discovery?.cleanup(); await community?.cleanup(); await operations?.tick(); }
+        try { if (!await availability.permits()) return; await competition?.daily(); await competition?.cleanup(); await identity.cleanup(); await discovery?.cleanup(); await community?.cleanup(); await operations?.tick(); }
         catch { log('identity.cleanup_failed', { code: 'CLEANUP_FAILED' }); }
         finally { cleaning = null; }
       })();
@@ -116,12 +122,20 @@ export async function startServer({ config = loadConfig(), log = createLogger(),
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const log = createLogger();
   try {
-    const runtime = await startServer({log});
+    const config = loadConfig();
+    if (config.environment === 'production' && !process.env.AGP_AVAILABILITY_FILE) throw Error('Managed availability required');
+    const availability = createAvailability(process.env.AGP_AVAILABILITY_FILE);
+    const runtime = await startServer({log,config,availability});
     let stopping = false;
+    const control = process.env.AGP_AVAILABILITY_FILE ? setInterval(async () => {
+      if (await availability.state() === 'draining') stop();
+    }, 500) : null;
+    control?.unref();
     const stop = () => {
       if(stopping)return;
       stopping=true;
-      const timeout=setTimeout(()=>process.exit(1),15000);timeout.unref();
+      clearInterval(control);
+      const timeout=setTimeout(()=>process.exit(1),130000);timeout.unref();
       runtime.stop().catch(()=>{log('app.failed',{code:'SHUTDOWN_ERROR'});process.exitCode=1;})
         .finally(()=>clearTimeout(timeout));
     };

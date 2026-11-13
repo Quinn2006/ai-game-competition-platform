@@ -6,10 +6,10 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { callChannel } from '../backend/src/platform/service-channel.mjs';
 
-export async function isolatedFixture(root, config) {
+export async function isolatedFixture(root, config, {servingRoot} = {}) {
   const id=randomUUID(), children=[];
   const runtime={};
-  for(const name of ['servingRoot','inboxRoot','stageRoot']){runtime[name]=join(root,name);await mkdir(runtime[name]);}
+  for(const name of ['servingRoot','inboxRoot','stageRoot']){runtime[name]=name==='servingRoot'&&servingRoot?servingRoot:join(root,name);if(name!=='servingRoot'||!servingRoot)await mkdir(runtime[name]);}
   for(const service of ['auth','validator','control']){
     const key=randomBytes(32).toString('hex'),keyFile=join(root,service+'.key');await writeFile(keyFile,key);
     runtime[service]={pipe:'\\\\.\\pipe\\agp-test-'+id+'-'+service,key,keyFile,service};

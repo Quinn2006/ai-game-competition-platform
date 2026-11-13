@@ -1,5 +1,7 @@
 # 项目目录与本地运行手册
 
+2026-11-13：生产新增受控部署、手动启停及独立加密恢复，见 [生产部署与恢复](production-deployment-recovery.md)。原 data/postgres 不搬迁/覆盖；运行私有作品与派生资源置于新隔离安装的 private/serving，生产备份包在批准备份目录，恢复密钥单独受控保存，不与备份包混放。本文后续 local:backup/local:restore 为开发流程，不能用于生产。无定时开关或开机自动开放。
+
 2026-11-03：保留 Node.js 原生 HTTP、原生前端与 PostgreSQL。根目录仍为 `D:\AI-project\Codex-project1`。按最新确认，新主库位于 data/postgres，旧库及旧作品未导入、未修改。
 
 ## 目录标准

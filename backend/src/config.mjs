@@ -118,6 +118,6 @@ export function loadConfig(env = process.env) {
   if (production && (!databaseUrl || !sessionSecret || !env.MAIN_ORIGIN || !env.GAME_ORIGIN ||
       (localDriver ? (!privateStorageRoot || !storageAccount) : !endpoint))) fail('production dependencies');
   return Object.freeze({ environment, port, host, mainOrigin, gameOrigin, gameListenOrigin,
-    databaseUrl, databaseTls, storage: Object.freeze({ driver: storageDriver, endpoint, bucket, root: privateStorageRoot,
+    databaseUrl, databaseTls, databaseCaFile: env.DATABASE_CA_FILE ? resolve(env.DATABASE_CA_FILE) : null, storage: Object.freeze({ driver: storageDriver, endpoint, bucket, root: privateStorageRoot,
       trustRoot: privateStorageTrustRoot, account: storageAccount, accountSid: storageAccountSid, extraSids: storageExtraSids }), submissionsRoot:resolve(projectRoot,env.SUBMISSIONS_ROOT || 'data/submissions'), exportsRoot:resolve(projectRoot,env.EXPORTS_ROOT || 'data/exports'), sessionSecret, localMailPreview,localGames,uploadLimits,scannerPort,gameLoadTimeout,submissionDeadline });
 }

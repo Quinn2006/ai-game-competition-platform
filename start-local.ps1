@@ -1,6 +1,6 @@
 ﻿#Requires -Version 5.1
 [CmdletBinding()]
-param([switch]$CheckOnly,[ValidateSet('Local','Public')][string]$Mode,[ValidateSet('Temporary','Own')][string]$TunnelMode)
+param([switch]$CheckOnly,[ValidateSet('Local','Public')][string]$Mode,[ValidateSet('Temporary','Own')][string]$TunnelMode,[switch]$ManagedTunnelOnly,[string]$ExpectedMainOrigin,[string]$ExpectedGameOrigin)
 $ErrorActionPreference='Stop'
 $project=$PSScriptRoot
 $previous=@{}
@@ -48,6 +48,7 @@ function Assert-FreePort([string]$Address,[int]$Port){
 }
 Push-Location $project
 try {
+    if($ManagedTunnelOnly -and ($Mode -ne 'Public' -or $TunnelMode -ne 'Own' -or $CheckOnly)){throw 'Managed tunnel mode requires Public/Own and a ready external supervisor.'}
     if(-not $Mode -and -not $CheckOnly){
         Write-Host '请选择启动方式：1 本地启动；2 公网模式'
         do {$choice=Read-Host '输入 1 或 2'} while($choice -notin @('1','2'))
@@ -80,6 +81,14 @@ try {
             Write-Host 'PASS: 自有隧道本地配置完整。Token 有效性将在连接时检查；云端路由和 DNS 尚未验证。'
             Write-Host ('请确认云端路由：'+$own.mainOrigin+' -> http://127.0.0.1:4320；'+$own.gameOrigin+' -> http://127.0.0.2:4321')
         }
+    }
+    if($ManagedTunnelOnly){
+        if(-not $ExpectedMainOrigin -or -not $ExpectedGameOrigin -or ([string]$own.mainOrigin).TrimEnd('/') -ne $ExpectedMainOrigin -or ([string]$own.gameOrigin).TrimEnd('/') -ne $ExpectedGameOrigin){throw 'Managed installation and existing tunnel origins differ; refusing public opening.'}
+        # The existing launcher remains the only consumer of the protected
+        # tunnel configuration. The controller invokes this after readiness.
+        $null=Start-Tunnel ([string]$own.mainOrigin).TrimEnd('/') $tokenPath
+        while(-not $tunnels[0].HasExited){Start-Sleep -Seconds 1}
+        throw 'Managed tunnel exited'
     }
     if(-not(Get-Command node -ErrorAction SilentlyContinue)){throw '未找到 Node.js。'}
     $major='console.log(process.versions.node.split(".")[0])' | & node --input-type=module

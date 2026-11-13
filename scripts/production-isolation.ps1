@@ -2,6 +2,7 @@ param(
   [ValidateSet('Plan','Install','Start','Uninstall')][string]$Action='Plan',
   [Parameter(Mandatory)][string]$Root,
   [string]$MainEnvironmentFile,
+  [string]$DatabaseCaFile,
   [string]$MainOrigin='https://main.example.com',
   [string]$GameOrigin='https://game.example.net',
   [ValidateRange(1024,65535)][int]$MainPort=4370,
@@ -49,6 +50,18 @@ Add-Type -Path (Join-Path $PSScriptRoot 'windows-isolation.cs')
 . (Join-Path $PSScriptRoot 'isolation-pipes.ps1')
 if($Action -eq 'Install') {
   if(Test-Path -LiteralPath $Root){throw 'Refusing to reuse any existing installation directory'}
+  if($Root.StartsWith(($project+'\data\submissions\'),[StringComparison]::OrdinalIgnoreCase)){
+    foreach($required in @('MainEnvironmentFile','DatabaseCaFile','MainOrigin','GameOrigin','MainPort','GamePort','ScannerPort')){if(-not $PSBoundParameters.ContainsKey($required)){throw 'Production installation requires explicit environment, CA, actual origins and approved listening ports'}}
+    if($MainOrigin -match '\.example\.' -or $GameOrigin -match '\.example\.'){throw 'Example origins are not production configuration'}
+  }
+  if($MainEnvironmentFile){
+    $allowed=@('APP_ENV','HOST','PORT','MAIN_ORIGIN','GAME_ORIGIN','DATABASE_URL','DATABASE_TLS','DATABASE_CA_FILE','SESSION_SECRET','CLAMD_PORT','GAME_LISTEN_ORIGIN',
+      'PRIVATE_STORAGE_DRIVER','PRIVATE_STORAGE_ROOT','PRIVATE_STORAGE_TRUST_ROOT','PRIVATE_STORAGE_ACCOUNT','PRIVATE_STORAGE_ACCOUNT_SID','PRIVATE_STORAGE_EXTRA_SIDS',
+      'UPLOAD_MAX_BYTES','UPLOAD_MAX_EXPANDED_BYTES','UPLOAD_MAX_FILES','GAME_LOAD_TIMEOUT_MS','SUBMISSION_DEADLINE','SUBMISSIONS_ROOT','EXPORTS_ROOT','SUPPORT_EMAIL','ISOLATION_CONFIG','AGP_AVAILABILITY_FILE')
+    foreach($match in [regex]::Matches((Get-Content -LiteralPath $MainEnvironmentFile -Raw),'(?m)^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=')){
+      if($match.Groups[1].Value -cnotin $allowed){throw 'Main environment contains a non-application variable; never supply the maintenance environment here'}
+    }
+  }
   Assert-PlainPath (Split-Path -Parent $Root)
   foreach($origin in @($MainOrigin,$GameOrigin)){if(([uri]$origin).Scheme -ne 'https'){throw 'HTTPS public origins required'}}
   New-Item -ItemType Directory -Path $Root | Out-Null
@@ -116,9 +129,12 @@ if($Action -eq 'Install') {
       Json (Join-Path $dir 'runtime.json') $config
     }
     if($MainEnvironmentFile){Copy-Item -LiteralPath $MainEnvironmentFile -Destination (Join-Path $Root 'main\main.env')}
+    if($DatabaseCaFile){Copy-Item -LiteralPath $DatabaseCaFile -Destination (Join-Path $Root 'main\database-ca.pem')}
     $mainConfig=@{APP_ENV='production';HOST='127.0.0.1';PORT="$MainPort";MAIN_ORIGIN=$MainOrigin;GAME_ORIGIN=$GameOrigin;
       PRIVATE_STORAGE_DRIVER='local';PRIVATE_STORAGE_ROOT=(Join-Path $Root 'private');PRIVATE_STORAGE_TRUST_ROOT=(Join-Path $Root 'private');
-      PRIVATE_STORAGE_ACCOUNT=$main;PRIVATE_STORAGE_ACCOUNT_SID=$main;ISOLATION_CONFIG=(Join-Path $Root 'main\runtime.json')}
+      PRIVATE_STORAGE_ACCOUNT=$main;PRIVATE_STORAGE_ACCOUNT_SID=$main;ISOLATION_CONFIG=(Join-Path $Root 'main\runtime.json');AGP_AVAILABILITY_FILE=(Join-Path $Root 'main\availability.json')}
+    if($DatabaseCaFile){$mainConfig.DATABASE_CA_FILE=Join-Path $Root 'main\database-ca.pem'}
+    Json (Join-Path $Root 'main\availability.json') @{version=1;state='closed';issuedAt=0;expiresAt=0}
     Json (Join-Path $Root 'main\environment.json') $mainConfig
     [AgpNetwork]::Install((Join-Path $Root 'game\node.exe'),0,[string[]]$state.filters[0..1])
     [AgpNetwork]::Install((Join-Path $Root 'validator\node.exe'),$ScannerPort,[string[]]$state.filters[2..5])
@@ -148,6 +164,8 @@ if(-not $state.complete){throw 'Incomplete installation'}
 [AgpNetwork]::AssertInstalled([string[]]$state.filters)
 if(-not(Test-Path -LiteralPath (Join-Path $Root 'main\main.env'))){throw 'Main environment file required; database/session credentials belong only in main/main.env'}
 $jobs=@()
+$graceful=$false
+$availabilityPath=Join-Path $Root 'main\availability.json'
 try {
   foreach($role in @('validator','main','game')){
     $dir=Join-Path $Root $role;$credential=Import-Clixml -LiteralPath (Join-Path $Root ($role+'.credential.xml'))
@@ -167,11 +185,23 @@ try {
     Write-Output "$role PID $($job.Pid)"
     Grant-AgpPipe $state $Root $role
   }
-  Write-Output 'Supervisor active. Ctrl+C stops all owned process trees; no public tunnel is started.'
+  Write-Output 'Supervisor active; managed availability is required. No public tunnel is started here.'
   while($true){
-    if($jobs[1].job.Exited){throw 'Main exited; stopping owned process trees'}
+    if($jobs[1].job.Exited){$graceful=$jobs[1].job.ExitCode -eq 0;break}
+    $lease=Get-Content -LiteralPath $availabilityPath -Raw | ConvertFrom-Json
+    if($lease.state -eq 'draining' -or [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() -gt $lease.expiresAt){break}
     # A worker crash is not propagated to main. Readiness reports 503; recovery
     # is an operator restart, never an unchecked respawn loop.
     Start-Sleep -Seconds 1
   }
-} finally {foreach($entry in $jobs){$entry.job.Dispose()}}
+} finally {
+  if($jobs.Count -ge 2 -and -not $jobs[1].job.Exited){
+    Json $availabilityPath @{version=1;state='draining';issuedAt=0;expiresAt=0}
+    $deadline=[DateTime]::UtcNow.AddSeconds(135)
+    while(-not $jobs[1].job.Exited -and [DateTime]::UtcNow -lt $deadline){Start-Sleep -Milliseconds 200}
+    $graceful=$jobs[1].job.Exited -and $jobs[1].job.ExitCode -eq 0
+  }
+  foreach($entry in $jobs){$entry.job.Dispose()}
+  Json (Join-Path $Root 'shutdown.json') @{at=[DateTime]::UtcNow.ToString('o');graceful=$graceful;writersStopped=$true}
+}
+if(-not $graceful){throw 'Writers forcibly stopped; recovery checks required. No successful drain claimed.'}
