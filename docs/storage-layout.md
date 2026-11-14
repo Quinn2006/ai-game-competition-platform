@@ -1,5 +1,7 @@
 # 项目目录与本地运行手册
 
+2026-11-15：本机正式安装使用 `data/production/`，独立 PostgreSQL 55441、专用运行账号及手动 Start/Stop/Backup；`data/postgres/` 继续作为原开发主库。正式环境操作与验收见 [本机正式安装记录](production-installation-2026-11-13.md)，不要用下方开发入口替代生产入口。
+
 2026-11-13：生产新增受控部署、手动启停及独立加密恢复，见 [生产部署与恢复](production-deployment-recovery.md)。原 data/postgres 不搬迁/覆盖；运行私有作品与派生资源置于新隔离安装的 private/serving，生产备份包在批准备份目录，恢复密钥单独受控保存，不与备份包混放。本文后续 local:backup/local:restore 为开发流程，不能用于生产。无定时开关或开机自动开放。
 
 2026-11-03：保留 Node.js 原生 HTTP、原生前端与 PostgreSQL。根目录仍为 `D:\AI-project\Codex-project1`。按最新确认，新主库位于 data/postgres，旧库及旧作品未导入、未修改。
@@ -11,6 +13,7 @@ frontend/                 原 src/web，页面、样式、浏览器模块
 backend/src/              服务入口、配置、modules 业务、platform 基础设施
 database/migrations/      原 001—010 迁移，编号和 SQL 内容不变
 data/postgres/            固定数据库集群，仅 PostgreSQL 工具管理内部文件
+data/production/          独立正式安装、生产库、隔离运行目录、本地加密备份及受保护恢复材料
 data/submissions/         私有作品，按 development/test 环境隔离
   development/incoming/  坚果云待导入副本和清单
   development/quarantine/待检查或失败材料

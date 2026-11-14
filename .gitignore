@@ -18,4 +18,6 @@ build/
 
 # Private runtime data and local configuration
 /data/
+# Windows cache created by a previously incomplete isolated process environment
+/%SystemDrive%/
 !/.env.example

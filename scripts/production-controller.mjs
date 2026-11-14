@@ -1,4 +1,4 @@
-import { readFile, writeFile, rename } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join, relative, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
@@ -9,6 +9,9 @@ import { databaseReady } from '../backend/src/platform/migrations.mjs';
 import { recoveryMaterial, copyBundle, plain } from './recovery-store.mjs';
 import { connect } from './production-database.mjs';
 import { backupPolicy, completeBackup } from './production-backup-policy.mjs';
+import { createScanner } from '../backend/src/modules/uploads/scanner.mjs';
+import { waitForProcessExit } from './process-exit.mjs';
+import { writeAtomicJson } from './atomic-json.mjs';
 
 const scripts=fileURLToPath(new URL('./',import.meta.url));
 export async function runController(config,{requestedAt=Date.now(),backupOnly=false}={}){
@@ -27,12 +30,12 @@ export async function runController(config,{requestedAt=Date.now(),backupOnly=fa
   if(!Number.isSafeInteger(runStarted)||runStarted>Date.now())throw Error('Invalid manual start timestamp');
   let previous;
   try{previous=JSON.parse(await readFile(journal,'utf8'));}catch(e){if(e.code!=='ENOENT')throw e;}
-  const saveState=async state=>{const p=journal+'.'+randomUUID()+'.tmp';await writeFile(p,JSON.stringify(state),{flag:'wx'});await rename(p,journal);};
-  const owned=new Map();let stop=false,writerStartedAt=0,lastBackup;
+  const saveState=state=>writeAtomicJson(journal,state);
+  const owned=new Map();let stop=false,writerStartedAt=0,lastBackup,lastReadiness,lastLeaseFailure;
   const lease=async state=>{
-    const issuedAt=Date.now(),temporary=availability+'.'+randomUUID()+'.tmp';
-    await writeFile(temporary,JSON.stringify({version:1,state,issuedAt,expiresAt:issuedAt+(state==='warming'?120000:12000)}),{flag:'wx'});
-    await rename(temporary,availability);
+    const issuedAt=Date.now();
+    try{await writeAtomicJson(availability,{version:1,state,issuedAt,expiresAt:issuedAt+(state==='warming'?120000:12000)});}
+    catch(error){lastLeaseFailure={at:new Date().toISOString(),state,code:['EPERM','EACCES','EBUSY','ENOENT','ENOSPC'].includes(error.code)?error.code:'WRITE_FAILED'};throw error;}
   };
   async function startOwned(name,exe,args){
     if(owned.has(name))throw Error('Owned process exists');
@@ -46,7 +49,7 @@ export async function runController(config,{requestedAt=Date.now(),backupOnly=fa
   async function stopOwned(name,waitMs=5000){
     const child=owned.get(name);if(!child)return;
     const exited=()=>child.exitCode!==null||child.signalCode!==null||child.spawnError;
-    if(!exited()){child.stdin.end();await Promise.race([new Promise(r=>child.once('exit',r)),new Promise(r=>setTimeout(r,waitMs))]);}
+    if(!exited()){child.stdin.end();await waitForProcessExit(child,waitMs);}
     if(!exited())throw Error('Owned process failed to exit');
     owned.delete(name);
   }
@@ -70,13 +73,34 @@ export async function runController(config,{requestedAt=Date.now(),backupOnly=fa
       }finally{await c.end();}
       if(previous && !previous.clean && !backupOnly)await hooks.backup();
       await startOwned('scanner',config.scannerExe,['--config-file='+config.scannerConfig]);
+      // ClamAV loads its signature database before accepting scans. Do not
+      // launch a fail-closed main process while that dependency is warming.
+      const validator=JSON.parse(await readFile(join(config.installationRoot,'validator','runtime.json'),'utf8'));
+      const scan=createScanner({port:validator.scannerPort,timeout:1500}),deadline=Date.now()+60000;
+      while(true){
+        const host=owned.get('scanner');
+        if(host.exitCode!==null||host.signalCode!==null||host.spawnError)throw Error('Scanner exited during startup');
+        if((await scan(Buffer.from('production controller readiness'))).status==='clean')break;
+        if(Date.now()>=deadline)throw Error('Scanner startup deadline exceeded');
+        await new Promise(r=>setTimeout(r,500));
+      }
     },
     async startWriters(){writerStartedAt=Date.now();await lease('warming');await startOwned('supervisor',config.pwsh,['-NoProfile','-File',join(scripts,'production-isolation.ps1'),'-Action','Start','-Root',config.installationRoot]);},
     async ready(){
       const deadline=Date.now()+60000;
       do{
-        if([...owned.values()].some(p=>p.exitCode!==null||p.signalCode!==null||p.spawnError))return false;
-        try{const r=await fetch(config.healthUrl,{signal:AbortSignal.timeout(2000)});if(r.ok)return true;}catch{}
+        const processes=[...owned].map(([name,p])=>({name,exitCode:p.exitCode,signalCode:p.signalCode,spawnError:p.spawnError===true}));
+        if(processes.some(p=>p.exitCode!==null||p.signalCode!==null||p.spawnError)){
+          lastReadiness={at:new Date().toISOString(),kind:'process-exit',processes};return false;
+        }
+        const started=Date.now();
+        try{
+          // The application bounds dependency checks at 2 seconds and may
+          // spend another 250 ms recording failure. Let its 503 reach us.
+          const r=await fetch(config.healthUrl,{signal:AbortSignal.timeout(4000)});
+          lastReadiness={at:new Date().toISOString(),kind:'http',status:r.status,elapsedMs:Date.now()-started,processes};
+          await r.body?.cancel();if(r.ok)return true;
+        }catch(error){lastReadiness={at:new Date().toISOString(),kind:'transport',timeout:error.name==='TimeoutError',elapsedMs:Date.now()-started,processes};}
         if(machine.phase==='open')return false;
         await new Promise(r=>setTimeout(r,500));
       }while(Date.now()<deadline);return false;
@@ -86,16 +110,27 @@ export async function runController(config,{requestedAt=Date.now(),backupOnly=fa
       // Only the existing, explicitly approved tunnel adapter may consume its
       // secret. No temporary tunnel fallback and no direct reads by this code.
       if(!config.tunnelAdapter)throw Error('Approved tunnel adapter required');
-      await startOwned('tunnel',config.pwsh,['-NoProfile','-File',config.tunnelAdapter,'-Mode','Public','-TunnelMode','Own','-ManagedTunnelOnly','-ExpectedMainOrigin',mainEnvironment.MAIN_ORIGIN,'-ExpectedGameOrigin',mainEnvironment.GAME_ORIGIN]);
+      const statusFile=join(config.evidenceRoot,randomUUID()+'.tunnel.json');
+      await startOwned('tunnel',config.pwsh,['-NoProfile','-File',config.tunnelAdapter,'-Mode','Public','-TunnelMode','Own','-ManagedTunnelOnly','-ExpectedMainOrigin',mainEnvironment.MAIN_ORIGIN,'-ExpectedGameOrigin',mainEnvironment.GAME_ORIGIN,'-ManagedStatusFile',statusFile]);
+      const deadline=Date.now()+70000;
+      while(true){
+        let status;
+        try{status=JSON.parse((await readFile(statusFile,'utf8')).replace(/^\uFEFF/,''));}catch(e){if(e.code!=='ENOENT'&&!(e instanceof SyntaxError))throw e;}
+        const host=owned.get('tunnel');
+        if(status?.phase==='failed'||host.exitCode!==null||host.signalCode!==null||host.spawnError)throw Error('Managed tunnel failed');
+        if(status?.phase==='connected')break;
+        if(Date.now()>=deadline||!await hooks.ready())throw Error('Managed tunnel readiness failed');
+        await hooks.renewLease();await new Promise(r=>setTimeout(r,1000));
+      }
       await saveState({clean:false,phase:'active',startedAt:new Date(runStarted).toISOString()});
     },
     async stopWriters(){
       await lease('draining');
       const child=owned.get('supervisor');
-      if(child&&child.exitCode===null&&child.signalCode===null&&!child.spawnError)await Promise.race([new Promise(r=>child.once('exit',r)),new Promise(r=>setTimeout(r,140000))]);
+      if(child)await waitForProcessExit(child,140000);
       await stopOwned('supervisor');await storageCheck('Stopped');await stopOwned('scanner');
-      let graceful=false;
-      try{const s=JSON.parse(await readFile(join(config.installationRoot,'shutdown.json'),'utf8'));graceful=s.graceful===true&&Date.parse(s.at)>=writerStartedAt;}catch{}
+      let graceful=writerStartedAt===0;
+      if(writerStartedAt)try{const s=JSON.parse(await readFile(join(config.installationRoot,'shutdown.json'),'utf8'));graceful=s.graceful===true&&Date.parse(s.at)>=writerStartedAt;}catch{}
       return {graceful,forcedAbort:!graceful,memoryUploads:'restart required'};
     },
     async backup(){
@@ -126,7 +161,7 @@ export async function runController(config,{requestedAt=Date.now(),backupOnly=fa
       await service('StopDatabase');
     },
     async report(result){
-      const report={...result,backupPolicy:policy,localBackupVerified:lastBackup?.localBackupVerified===true,
+      const report={...result,lastReadiness,lastLeaseFailure,backupPolicy:policy,localBackupVerified:lastBackup?.localBackupVerified===true,
         offDiskVerified:lastBackup?.offDiskVerified===true,disasterRecoveryVerified:lastBackup?.disasterRecoveryVerified===true,at:new Date().toISOString()};
       await writeFile(join(config.evidenceRoot,randomUUID()+'.shutdown.json'),JSON.stringify(report),{flag:'wx'});
       previous={clean:result.ingressClosed&&result.writersStopped&&result.databaseStopped&&result.backupVerified,...report};await saveState(previous);

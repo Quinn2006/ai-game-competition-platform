@@ -53,6 +53,14 @@ test('manual session starts after 22:00 and crosses old schedule boundaries with
   const night=fixture();night.time='23:30:00';await night.machine.tick();assert.equal(night.machine.phase,'open');await night.machine.stop();
 });
 
+test('failed public tunnel startup closes writers, verifies backup and stops database without reopening',async()=>{
+  const f=fixture();f.faults.add('openIngress');
+  await f.machine.tick();
+  assert.equal(f.machine.phase,'closed');
+  assert.deepEqual(f.calls.slice(-5),['closeIngress','stopWriters','backup','stopDatabase','report']);
+  const count=f.calls.length;await f.machine.tick();assert.equal(f.calls.length,count);
+});
+
 test('retention keeps newest and daily/weekly/monthly floors',()=>{
   const items=Array.from({length:180},(_,i)=>({name:String(i),snapshotAt:new Date(Date.UTC(2026,10,13)-i*86400000).toISOString()}));
   const keep=retainedBackups(items,{daily:7,weekly:4,monthly:3});
@@ -65,14 +73,14 @@ test('Windows managed process host stops its Job when controller pipe closes and
   const dir=await root(),probe=createServer();probe.listen(0,'127.0.0.1');await once(probe,'listening');
   const port=probe.address().port;await new Promise(r=>probe.close(r));
   const childFile=join(dir,'child.mjs'),ready=join(dir,'ready.json');
-  await writeFile(childFile,`import {createServer} from 'node:net';import {writeFileSync} from 'node:fs';createServer().listen(${port},'127.0.0.1',()=>writeFileSync(${JSON.stringify(ready)},JSON.stringify({pid:process.pid,secretPresent:Boolean(process.env.PRODUCTION_ADMIN_URL)})));`);
+  await writeFile(childFile,`import {createServer} from 'node:net';import {writeFileSync} from 'node:fs';createServer().listen(${port},'127.0.0.1',()=>writeFileSync(${JSON.stringify(ready)},JSON.stringify({pid:process.pid,systemDrive:process.env.SystemDrive,secretPresent:Boolean(process.env.PRODUCTION_ADMIN_URL)})));`);
   const specification=join(dir,'process.json');await writeFile(specification,JSON.stringify({exe:process.execPath,args:[childFile],cwd:dir}));
   const host=spawn('pwsh.exe',['-NoProfile','-File',resolve('scripts/production-process.ps1'),'-Specification',specification],{windowsHide:true,stdio:['pipe','ignore','pipe'],env:{...process.env,PRODUCTION_ADMIN_URL:'synthetic forbidden environment'}});
   let stderr='';host.stderr.on('data',c=>{stderr+=c;});
   try{
     let status;
     for(let i=0;i<100;i++){try{status=JSON.parse(await readFile(ready,'utf8'));break;}catch{}if(host.exitCode!==null)throw Error(stderr);await new Promise(r=>setTimeout(r,50));}
-    assert.ok(status);assert.equal(status.secretPresent,false);
+    assert.ok(status);assert.equal(status.secretPresent,false);assert.equal(status.systemDrive,process.env.SystemDrive);
     const exit=once(host,'exit');host.stdin.end();await exit;assert.equal(host.exitCode,0,stderr);
     assert.throws(()=>process.kill(status.pid,0));
     probe.listen(port,'127.0.0.1');await once(probe,'listening');await new Promise(r=>probe.close(r));

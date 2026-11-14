@@ -1,11 +1,12 @@
 param(
   [ValidateSet('Plan','Install')][string]$Action='Plan',
   [switch]$AcceptLocalBackupOnly,
-  [switch]$ConfirmInstallation
+  [switch]$ConfirmInstallation,
+  [switch]$ResumePrepared
 )
 $ErrorActionPreference='Stop'
 $project=[IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
-$root=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'AIGamesProduction'
+$root=Join-Path $project 'data\production'
 $runtime=Join-Path $root 'runtime'
 $pgSource=Join-Path $project 'tmp\phase2-postgres\runtime\pgsql\bin'
 $clamSource=Join-Path $project 'tmp\phase3-clamav\runtime\clamav-1.5.4.win.x64'
@@ -28,7 +29,7 @@ $plan=[ordered]@{
   origins=@($mainOrigin,$gameOrigin);ports=$ports;occupiedPorts=$occupied;freeGiB=[math]::Round($free/1GB,2);
   existingRoot=(Test-Path -LiteralPath $root);existingService=[bool](Get-Service -Name $service -ErrorAction SilentlyContinue);
   administrator='admin@wsyz-aigames.de5.net (login identifier; no email sent), fresh random password, mandatory MFA';
-  acl='Only the new ProgramData tree. Three non-admin runtime accounts; separate PostgreSQL virtual service identity.';
+  acl='Only the new project data/production tree. Three non-admin runtime accounts; separate PostgreSQL virtual service identity.';
   network='Six WFP filters scoped to the two copied worker executables. All four listeners are loopback.';
   backup='Explicit local-only exception: encrypted local backup verified; off-disk disaster recovery remains unverified.';
   tls='Dedicated CA (3650 days) and server certificate (397 days), SAN localhost/127.0.0.1, explicit per-client CA trust; no OS-wide trust change';
@@ -39,14 +40,19 @@ $plan=[ordered]@{
 if($Action -eq 'Plan'){$plan | ConvertTo-Json -Depth 5;return}
 if(-not $ConfirmInstallation -or -not $AcceptLocalBackupOnly){throw 'Reviewed installation confirmation and explicit local-only backup acceptance required'}
 if(-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){throw 'Approved elevated installation required'}
-if($plan.existingRoot -or $plan.existingService -or $occupied.Count){throw 'Existing installation/service or occupied ports; refusing reuse'}
+if(($plan.existingRoot -and -not $ResumePrepared) -or $plan.existingService -or $occupied.Count){throw 'Existing installation/service or occupied ports; refusing reuse'}
+if($ResumePrepared){
+  $original=Get-Content -LiteralPath (Join-Path $root 'evidence\approved-installation.json') -Raw | ConvertFrom-Json
+  if($original.root -ne $root -or $original.databaseService -ne $service -or (Test-Path -LiteralPath (Join-Path $root 'postgres')) -or (Test-Path -LiteralPath $runtime)){throw 'Prepared-only resume refused: target differs or database/runtime already exists'}
+  foreach($file in @('configuration\bootstrap.env','configuration\main.env','configuration\maintenance.env','configuration\init-password.key','certificates\server.crt','certificates\server.key','certificates\ca.crt')){if(-not(Test-Path -LiteralPath (Join-Path $root $file) -PathType Leaf)){throw 'Prepared installation incomplete'}}
+}
 if($free -lt 5GB){throw 'At least 5 GiB free installation space required'}
 foreach($account in $plan.accounts){if(Get-LocalUser -Name $account -ErrorAction SilentlyContinue){throw 'Existing runtime account refused'}}
 for($item=Get-Item -LiteralPath (Split-Path -Parent $root);$null -ne $item;$item=$item.Parent){if($item.Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'Reparse installation parent refused'}}
 function Protect([string]$path){
   $acl=[Security.AccessControl.DirectorySecurity]::new();$acl.SetAccessRuleProtection($true,$false)
   $acl.SetOwner([Security.Principal.SecurityIdentifier]::new('S-1-5-32-544'))
-  foreach($sid in @('S-1-5-18','S-1-5-32-544')){$acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new([Security.Principal.SecurityIdentifier]::new($sid),'FullControl','ContainerInherit,ObjectInherit','None','Allow'))}
+  foreach($sid in @('S-1-5-18','S-1-5-32-544',[Security.Principal.WindowsIdentity]::GetCurrent().User.Value)){$acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new([Security.Principal.SecurityIdentifier]::new($sid),'FullControl','ContainerInherit,ObjectInherit','None','Allow'))}
   Set-Acl -LiteralPath $path -AclObject $acl
 }
 function Json([string]$path,$value){$value | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $path -Encoding utf8NoBOM}
@@ -56,9 +62,9 @@ function Run([string]$exe,[string[]]$arguments){
   & $exe @arguments >> (Join-Path $root 'evidence\install-tools.log') 2>&1
   if($LASTEXITCODE -ne 0){throw 'Installation tool failed; protected evidence retained'}
 }
-New-Item -ItemType Directory -Path $root | Out-Null;Protect $root
-foreach($name in @('configuration','certificates','recovery','backups','staging','evidence','scanner')){New-Item -ItemType Directory -Path (Join-Path $root $name) | Out-Null;Protect (Join-Path $root $name)}
-Json (Join-Path $root 'evidence\approved-installation.json') $plan
+if(-not $ResumePrepared){New-Item -ItemType Directory -Path $root | Out-Null};Protect $root
+foreach($name in @('configuration','certificates','recovery','backups','staging','evidence','scanner')){if(-not $ResumePrepared){New-Item -ItemType Directory -Path (Join-Path $root $name) | Out-Null};Protect (Join-Path $root $name)}
+if(-not $ResumePrepared){Json (Join-Path $root 'evidence\approved-installation.json') $plan}
 $configFile=Join-Path $root 'configuration\controller.json'
 $config=[ordered]@{projectRoot=$project;installationRoot=$runtime;backupRoot=(Join-Path $root 'backups');stagingRoot=(Join-Path $root 'staging');evidenceRoot=(Join-Path $root 'evidence');
   recoveryMaterialFile=(Join-Path $root 'recovery\material.json');pgBin=(Join-Path $root 'postgres-control\bin');caFile=(Join-Path $root 'certificates\ca.crt');pwsh=$pwsh;
@@ -69,6 +75,8 @@ $config=[ordered]@{projectRoot=$project;installationRoot=$runtime;backupRoot=(Jo
 $registered=$false;$databaseStarted=$false
 Push-Location $project
 try {
+  $mainEnv=Join-Path $root 'configuration\main.env';$bootstrap=Join-Path $root 'configuration\bootstrap.env';$pwFile=Join-Path $root 'configuration\init-password.key'
+  if(-not $ResumePrepared){
   $session=RandomHex;$admin=RandomHex;$migrate=RandomHex;$app=RandomHex;$backup=RandomHex
   $mainEnv=Join-Path $root 'configuration\main.env'
   @("DATABASE_URL=postgres://app_production:${app}@127.0.0.1:55441/ai_games_production",'DATABASE_TLS=verify-full',"SESSION_SECRET=$session",'CLAMD_PORT=3310') | Set-Content -LiteralPath $mainEnv -Encoding utf8NoBOM
@@ -81,6 +89,7 @@ try {
   Run $openssl @('req','-newkey','rsa:3072','-nodes','-keyout',$config.serverPrivateKey,'-out',(Join-Path $root 'certificates\server.csr'),'-subj','/CN=localhost')
   @('subjectAltName=DNS:localhost,IP:127.0.0.1','basicConstraints=critical,CA:FALSE','keyUsage=critical,digitalSignature,keyEncipherment','extendedKeyUsage=serverAuth') | Set-Content -LiteralPath (Join-Path $root 'certificates\server.ext')
   Run $openssl @('x509','-req','-in',(Join-Path $root 'certificates\server.csr'),'-CA',$config.caFile,'-CAkey',(Join-Path $root 'certificates\ca.key'),'-CAcreateserial','-out',$config.serverCertificate,'-days','397','-extfile',(Join-Path $root 'certificates\server.ext'))
+  }
   Run $openssl @('verify','-CAfile',$config.caFile,'-verify_ip','127.0.0.1',$config.serverCertificate)
   Run (Join-Path $pgSource 'initdb.exe') @('-D',$config.databaseDirectory,'-U','bootstrap_admin',('--pwfile='+$pwFile),'--auth=scram-sha-256','--encoding=UTF8','--locale=C')
   Protect $config.databaseDirectory
@@ -90,6 +99,13 @@ try {
   Run $pwsh @('-NoProfile','-File',(Join-Path $PSScriptRoot 'production-postgres.ps1'),'-Action','Prepare','-ConfigFile',$prepareFile)
   Json $configFile $config
   Run $pwsh @('-NoProfile','-File',(Join-Path $PSScriptRoot 'production-isolation.ps1'),'-Action','Install','-Root',$runtime,'-MainEnvironmentFile',$mainEnv,'-DatabaseCaFile',$config.caFile,'-MainOrigin',$mainOrigin,'-GameOrigin',$gameOrigin,'-MainPort','4320','-GamePort','4321','-ScannerPort','3310')
+  # Node resolves ancestor directories before loading modules. Permit inspection
+  # of this parent only; all configuration, backup and recovery subtrees remain
+  # protected and do not inherit these runtime-account grants.
+  $rootAcl=Get-Acl -LiteralPath $root
+  $runtimeState=Get-Content -LiteralPath (Join-Path $runtime 'installation.json') -Raw | ConvertFrom-Json
+  foreach($account in $runtimeState.accounts){$rootAcl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new([Security.Principal.SecurityIdentifier]::new($account.sid),'ReadAndExecute','Allow'))}
+  Set-Acl -LiteralPath $root -AclObject $rootAcl
   Copy-Item -LiteralPath $clamSource -Destination (Join-Path $root 'scanner\runtime') -Recurse
   Copy-Item -LiteralPath $clamDatabase -Destination (Join-Path $root 'scanner\database') -Recurse
   @("DatabaseDirectory $(Join-Path $root 'scanner\database')",'TCPSocket 3310','TCPAddr 127.0.0.1','Foreground yes','StreamMaxLength 300000000','MaxThreads 2','MaxQueue 4') | Set-Content -LiteralPath $config.scannerConfig
@@ -116,7 +132,7 @@ try {
   Json (Join-Path $root 'evidence\installation-result.json') @{installed=$true;closed=$true;localBackupVerified=$true;offDiskVerified=$false;disasterRecoveryVerified=$false;publicAcceptance=$false;at=[DateTimeOffset]::UtcNow.ToString('o')}
   Write-Output 'Production installed and closed with verified local encrypted backup. Public, identity and browser acceptance still required; no off-disk verification.'
 } catch {
-  Json (Join-Path $root 'evidence\installation-failure.json') @{failed=$true;serviceRegistered=$registered;message='Inspect protected install-tools.log; do not retry into the existing tree';at=[DateTimeOffset]::UtcNow.ToString('o')}
+  Json (Join-Path $root ('evidence\installation-failure-'+[guid]::NewGuid().ToString('N')+'.json')) @{failed=$true;serviceRegistered=$registered;message='Inspect protected install-tools.log; do not retry into the existing tree';at=[DateTimeOffset]::UtcNow.ToString('o')}
   throw 'Installation incomplete; protected data/evidence retained. No public opening requested.'
 } finally {
   if($databaseStarted -and $registered){

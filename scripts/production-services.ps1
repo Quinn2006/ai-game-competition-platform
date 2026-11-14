@@ -5,6 +5,7 @@ param(
   [switch]$BackupOnly
 )
 $ErrorActionPreference='Stop'
+. (Join-Path $PSScriptRoot 'read-shared-json.ps1')
 $ConfigFile=[IO.Path]::GetFullPath($ConfigFile)
 $config=Get-Content -LiteralPath $ConfigFile -Raw | ConvertFrom-Json
 if(-not $RequestedAt){$RequestedAt=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()}
@@ -51,7 +52,7 @@ if($Action -eq 'Backup'){
 }
 if($Action -eq 'Status'){
   $statePath=Join-Path $config.evidenceRoot 'controller-state.json'
-  if(Test-Path -LiteralPath $statePath){Get-Content -LiteralPath $statePath}else{Write-Output 'Never started'}
+  if(Test-Path -LiteralPath $statePath){Read-AgpSharedJson $statePath | ConvertTo-Json -Depth 8}else{Write-Output 'Never started'}
   return
 }
 if($Action -eq 'Stop'){

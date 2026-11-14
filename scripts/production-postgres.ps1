@@ -9,7 +9,7 @@ if($config.databaseService -notmatch '^AGP-PostgreSQL-[a-zA-Z0-9-]+$'){throw 'De
 $cluster=[IO.Path]::GetFullPath($config.databaseDirectory)
 $control=[IO.Path]::GetFullPath($config.databaseControlRoot)
 $project=[IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
-$managedRoot=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'AIGamesProduction'
+$managedRoot=Join-Path $project 'data\production'
 if($cluster -ne (Join-Path $managedRoot 'postgres') -and $cluster -ne (Join-Path $project 'data\postgres') -and -not $cluster.StartsWith($project+'\tmp\',[StringComparison]::OrdinalIgnoreCase)){throw 'Unreviewed cluster location'}
 if($control -ne (Join-Path $managedRoot 'postgres-control') -and -not $control.StartsWith($project+'\data\',[StringComparison]::OrdinalIgnoreCase) -and -not $control.StartsWith($project+'\tmp\',[StringComparison]::OrdinalIgnoreCase)){throw 'Unreviewed database control directory'}
 if($control -eq $cluster -or $control.StartsWith($cluster+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'Control files cannot be placed inside the existing cluster'}

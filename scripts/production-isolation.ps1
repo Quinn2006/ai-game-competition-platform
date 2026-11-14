@@ -10,11 +10,12 @@ param(
   [ValidateRange(1024,65535)][int]$ScannerPort=3311
 )
 $ErrorActionPreference='Stop'
+. (Join-Path $PSScriptRoot 'read-shared-json.ps1')
 $project=Split-Path -Parent $PSScriptRoot
 $Root=[IO.Path]::GetFullPath($Root)
-$managedRoot=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'AIGamesProduction\runtime'
+$managedRoot=Join-Path $project 'data\production\runtime'
 if($Root -eq [IO.Path]::GetPathRoot($Root) -or $Root -eq $project -or -not ($Root -eq $managedRoot -or $Root.StartsWith(($project+'\tmp\'),[StringComparison]::OrdinalIgnoreCase) -or $Root.StartsWith(($project+'\data\submissions\'),[StringComparison]::OrdinalIgnoreCase))) {
-  throw 'Use the dedicated ProgramData runtime, or a fresh project tmp/data/submissions directory. Never target existing user data.'
+  throw 'Use the dedicated data/production/runtime, or a fresh project tmp/data/submissions directory. Never target existing user data.'
 }
 $installationId=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($Root.ToLowerInvariant()))).Substring(0,10).ToLowerInvariant()
 function Assert-PlainPath([string]$Path) {
@@ -170,7 +171,7 @@ $availabilityPath=Join-Path $Root 'main\availability.json'
 try {
   foreach($role in @('validator','main','game')){
     $dir=Join-Path $Root $role;$credential=Import-Clixml -LiteralPath (Join-Path $Root ($role+'.credential.xml'))
-    $environment=@("SystemRoot=$env:SystemRoot","WINDIR=$env:WINDIR","PATH=$env:SystemRoot\System32","TEMP=$dir\temp","TMP=$dir\temp")
+    $environment=@("SystemRoot=$env:SystemRoot","SystemDrive=$env:SystemDrive","WINDIR=$env:WINDIR","PATH=$env:SystemRoot\System32","TEMP=$dir\temp","TMP=$dir\temp")
     if($role -eq 'main'){
       $values=Get-Content -LiteralPath (Join-Path $dir 'environment.json') -Raw | ConvertFrom-Json -AsHashtable
       foreach($item in $values.GetEnumerator()){$environment+=($item.Key+'='+$item.Value)}
@@ -189,12 +190,15 @@ try {
   Write-Output 'Supervisor active; managed availability is required. No public tunnel is started here.'
   while($true){
     if($jobs[1].job.Exited){$graceful=$jobs[1].job.ExitCode -eq 0;break}
-    $lease=Get-Content -LiteralPath $availabilityPath -Raw | ConvertFrom-Json
+    $lease=Read-AgpSharedJson $availabilityPath
     if($lease.state -eq 'draining' -or [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() -gt $lease.expiresAt){break}
     # A worker crash is not propagated to main. Readiness reports 503; recovery
     # is an operator restart, never an unchecked respawn loop.
     Start-Sleep -Seconds 1
   }
+} catch {
+  Json (Join-Path $Root ('startup-failure-'+[guid]::NewGuid().ToString('N')+'.json')) @{role=$role;message=$_.Exception.Message;line=$_.InvocationInfo.ScriptLineNumber;jobs=@($jobs | ForEach-Object {@{role=$_.role;exited=$_.job.Exited;exitCode=$(if($_.job.Exited){$_.job.ExitCode}else{$null})}})}
+  throw
 } finally {
   if($jobs.Count -ge 2 -and -not $jobs[1].job.Exited){
     Json $availabilityPath @{version=1;state='draining';issuedAt=0;expiresAt=0}

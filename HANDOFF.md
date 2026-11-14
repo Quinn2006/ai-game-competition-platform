@@ -1,4 +1,25 @@
-## 2026-11-13：正式安装准备（当前）
+## 2026-11-15：D 盘正式安装与本机功能验收完成（当前）
+
+- 最终生产目录 `D:\AI-project\Codex-project1\data\production`，独立 55441、Manual 服务 AGP-PostgreSQL-Production；新建生产库，保留开发库与作品。C:\ProgramData\AIGamesProduction 未创建，未执行旧清理候选删除；临时浏览器认证配置已移除。
+- 公网主站/试玩固定域名已验证，首管理员通过正式网页设置 MFA，实测仅密码拒绝、密码+动态码成功。密码、验证器密钥、恢复码仅在受保护 recovery 目录，不打印、不提交。合成作品 aec87e99-6243-43e3-b0e9-c9ed3c6ec173 已完成真实上传扫描、领取审核、公开匿名桌面/390×844 点击计分、二次验证撤销；撤销后详情/试玩/旧资源链接全部 404。浏览器会话已关闭。
+- 正式 TLS/最小权限/真实 ClamAV clean+EICAR 通过。用户管理员窗口执行真实 ACL/WFP/管道拒绝与 Job 资源检查通过；resource-acceptance-8cfde82d029440e195b81b45ddb85852.json：内存超额拒绝、CPU 约0.90%、主站五次200/11–13ms。
+- manual-cycle-63ca403b233048b5887a7f36ab3ab688.json：Stop、停机 Backup、Start 全部通过。实际加密备份独立恢复至新 55442 集群（D 盘 restore-checks/579699c5-cb66-47b6-9676-8d8a3223bf32），逐表/文件核验、MFA 重加密登录、旧会话失效、撤销保留通过，恢复集群已停，源库未改。证据 installed-restore-1794661089254.json；1216ms 仅小数据步骤，不承诺 RTO。异盘仍未验证。
+- 后续 2026-11-14 21:27:58 再次安全关闭，最后 readiness=200 且受管进程存活。2026-11-15 已在一次性文件复现 Get-Content 读锁与原子替换冲突（第122次 EPERM）。read-shared-json.ps1 使用共享删除并在解析前关闭句柄；atomic-json.mjs 对短暂占用限时重试，持续拒绝仍关闭，控制器保留 lastLeaseFailure。并发250次、短暂占用、持续占用三项真实Windows回归通过。
+- 用户最后手动启动 PID5704，startedAt=2026-11-14T17:55:12.346Z（上海11月15日01:55:12）；固定隧道01:55:37连接。runtime-observation-1794679132520.json：193145ms内90次本机健康检查通过，最大946ms，6次公网健康通过。01:59最终核查 active/公网200/撤销作品404，汇总 installation-acceptance-1794679157044.json。后续查询须实时核对，不把此历史状态当成当前事实。
+- 最终全量检查：147模块、106测试中104通过/2默认ACL跳过、130需求/18决策、全部PowerShell解析与diff空白检查通过。正式安装功能范围已完成，异盘、整机重启、容量与长期可用性未验证；操作入口与管理员凭据位置见 docs/production-installation-2026-11-13.md。仅本地提交，不推送/tag/release。
+- 工具侧提权此前被自动审批以 blocked by policy 拒绝，没有绕过。需要管理员操作时由用户运行已准备入口；用户已授权正式安装/公网验收，不再重复询问范围。受限两个 Tunnel 文件始终只由获准的原启动器消费。
+
+## 2026-11-14：D 盘正式安装已执行，公网验收待继续（历史）
+
+- 用户自行删除 mod，D 盘安装前空闲 35.08 GiB，明确要求继续；本任务没有执行清理清单中的任何删除。已将目标改为 `D:\AI-project\Codex-project1\data\production` 并实际安装；C 盘生产目录未创建。
+- `AGP-PostgreSQL-Production` 为 Manual 服务，独立集群 55441、空生产库已受控迁移，随机首管理员 `admin@wsyz-aigames.de5.net` 已创建但 MFA 尚未完成；密码只在受保护 recovery/first-administrator.json。三个真实账号 agp1164b01452m/g/v、NTFS/WFP/Job 安装完成，专项探针尚未全部执行。
+- 初始安装证据 tmp/production-install-resume-20261113-status.json passed=true；data/production/evidence/installation-result.json installed=true。初始及失败启动后的本地加密备份均验证通过。仅本地策略为用户明确接受，offDiskVerified/disasterRecoveryVerified=false。
+- 已修复新目录初始化令牌权限、运行账号父目录解析权限、ClamAV 冷启动就绪等待；只操作新生产树，原父 ACL 留存备份。最近一次启动到业务 ready 后 Tunnel 子进程失败，控制器安全排空（graceful=true/forcedAbort=false）、备份并停库。12:28:59 上海记录见 evidence/b2a6faf2-a551-403e-a3b0-e33d301994a9.shutdown.json；服务后查 Stopped，四个相关端口无监听。
+- 新增 ManagedStatusFile 握手，只有原启动器报告 connected 才记录 active，尚未实际重跑。随后提权启动加浏览器命令被自动审批拒绝（blocked by policy，无更具体原因）；未换工具绕过。已通过问题卡请用户在管理员 PowerShell 7 执行 D 盘 Start.ps1。下一步先读取新 *.tunnel.json 和 controller-state.json，不重复读受限 Tunnel 文件或重新运行 Install。
+- 用户第一次用普通窗口执行被拒绝，随后在管理员窗口启动控制器 PID 2892。隧道阶段报找不到 cloudflared，已复现净化环境缺少 PATHEXT 的扩展名查找问题，改为 cloudflared.exe。用户再次启动提示旧控制器锁仍被持有，已定位并修复排空超时计时器未清除导致约 140 秒退出延迟；两项专项测试通过，等待旧控制器自然退出后再由用户启动，不能强杀或绕过审批。12:34:28 最新关闭记录 graceful/backupVerified/databaseStopped=true。
+- scripts/verify-production-isolation.ps1 和 tests/production-boundary-probe.mjs 已准备真实账号权限/网络拒绝检查，尚未执行。还需实际手动正常开放、Stop/Backup、资源限制、浏览器登录/MFA、上传扫描审核试玩撤销和公网验收。详细现状、入口、回滚见 docs/production-installation-2026-11-13.md。下方 C 盘与“未安装”记录均为历史。
+
+## 2026-11-13：正式安装准备（历史，以上方当前记录为准）
 
 - 最新用户决定覆盖下方 C 盘计划：用户允许正式安装和公网验收，但要求不占 C 盘；随后明确选择最终安装到 `D:\AI-project\Codex-project1\data\production`，先整理可清理清单。C 盘目标不存在，未执行任何正式系统安装。安装器仍指向 C，改为 D 并验证前严禁执行 Install。
 - 已完成只读空间清单 `docs/production-cleanup-review-2026-11-13.md`：36 个候选合计 4.044 GiB（归档前逻辑大小），D 空闲约 0.94 GiB；净释放量尚未确定，扣除归档后仍可能达不到当前安装器的 5 GiB 门槛。六个工作树已合并且 Git clean，但忽略产物仍须备份；克隆验证副本无独立 .git。未发现 PostgreSQL 进程，清理前仍需逐个核验集群。

@@ -1,6 +1,6 @@
 ﻿#Requires -Version 5.1
 [CmdletBinding()]
-param([switch]$CheckOnly,[ValidateSet('Local','Public')][string]$Mode,[ValidateSet('Temporary','Own')][string]$TunnelMode,[switch]$ManagedTunnelOnly,[string]$ExpectedMainOrigin,[string]$ExpectedGameOrigin)
+param([switch]$CheckOnly,[ValidateSet('Local','Public')][string]$Mode,[ValidateSet('Temporary','Own')][string]$TunnelMode,[switch]$ManagedTunnelOnly,[string]$ExpectedMainOrigin,[string]$ExpectedGameOrigin,[string]$ManagedStatusFile)
 $ErrorActionPreference='Stop'
 $project=$PSScriptRoot
 $previous=@{}
@@ -8,6 +8,11 @@ $scanner=$null
 $browserJob=$null
 $result=0
 $tunnels=@()
+function Managed-Status([string]$Phase,[string]$Message=''){
+    if($ManagedTunnelOnly -and $ManagedStatusFile){
+        @{phase=$Phase;message=$Message;at=[DateTimeOffset]::UtcNow.ToString('o')} | ConvertTo-Json | Set-Content -LiteralPath $ManagedStatusFile -Encoding utf8
+    }
+}
 function Start-Tunnel([string]$Target,[string]$TokenFile){
     $dir=Join-Path $project 'tmp\public-tunnels'
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
@@ -15,7 +20,7 @@ function Start-Tunnel([string]$Target,[string]$TokenFile){
     $arguments=@('tunnel','--no-autoupdate','--logfile',('"'+$log+'"'))
     if($TokenFile){$arguments+=@('run','--token-file',('"'+$TokenFile+'"'))}
     else {$arguments+=@('--url',$Target)}
-    $process=Start-Process -FilePath (Get-Command cloudflared).Source -ArgumentList $arguments -WindowStyle Hidden -PassThru
+    $process=Start-Process -FilePath (Get-Command cloudflared.exe).Source -ArgumentList $arguments -WindowStyle Hidden -PassThru
     $script:tunnels+=$process
     $deadline=(Get-Date).AddSeconds(60)
     while((Get-Date) -lt $deadline){
@@ -54,7 +59,7 @@ try {
         do {$choice=Read-Host '输入 1 或 2'} while($choice -notin @('1','2'))
         $Mode=if($choice -eq '2'){'Public'}else{'Local'}
     }
-    if($Mode -eq 'Public' -and -not(Get-Command cloudflared -ErrorAction SilentlyContinue)){
+    if($Mode -eq 'Public' -and -not(Get-Command cloudflared.exe -ErrorAction SilentlyContinue)){
         throw '没有找到隧道工具 cloudflared。请安装后重新启动：winget install --id Cloudflare.cloudflared --exact'
     }
     if($Mode -eq 'Public'){
@@ -86,7 +91,9 @@ try {
         if(-not $ExpectedMainOrigin -or -not $ExpectedGameOrigin -or ([string]$own.mainOrigin).TrimEnd('/') -ne $ExpectedMainOrigin -or ([string]$own.gameOrigin).TrimEnd('/') -ne $ExpectedGameOrigin){throw 'Managed installation and existing tunnel origins differ; refusing public opening.'}
         # The existing launcher remains the only consumer of the protected
         # tunnel configuration. The controller invokes this after readiness.
+        Managed-Status 'connecting'
         $null=Start-Tunnel ([string]$own.mainOrigin).TrimEnd('/') $tokenPath
+        Managed-Status 'connected'
         while(-not $tunnels[0].HasExited){Start-Sleep -Seconds 1}
         throw 'Managed tunnel exited'
     }
@@ -161,7 +168,7 @@ try {
         & node --env-file=.env backend\src\server.mjs
         if($LASTEXITCODE -ne 0){throw '网站进程已退出；如果刚按 Ctrl+C，这是手动停止。'}
     }
-} catch {Write-Host ('启动未完成：'+$_.Exception.Message) -ForegroundColor Red;$result=1}
+} catch {Managed-Status 'failed' $_.Exception.Message;Write-Host ('启动未完成：'+$_.Exception.Message) -ForegroundColor Red;$result=1}
 finally {
     foreach($tunnel in $tunnels){if(-not $tunnel.HasExited){$tunnel.Kill();$tunnel.WaitForExit()}}
     if($browserJob){Stop-Job $browserJob; Receive-Job $browserJob; Remove-Job $browserJob}
