@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { loadConfig } from '../../backend/src/config.mjs';
 import { createDatabase } from '../../backend/src/platform/database.mjs';
-import { migrate, databaseReady } from '../../backend/src/platform/migrations.mjs';
+import { migrate, databaseReady, migrationFiles } from '../../backend/src/platform/migrations.mjs';
 import { appendAudit } from '../../backend/src/modules/audit/repository.mjs';
 import { appendSecurityAudit } from '../../backend/src/modules/audit/security.mjs';
 import { identityCases } from './identity-cases.mjs';
@@ -20,6 +20,28 @@ test('PostgreSQL: concurrent migration, empty rollback, reapply, audit persisten
   assert.ok(config.databaseUrl, 'DATABASE_URL is required; this suite must not silently skip');
   assert.equal(process.env.CONFIRM_DISPOSABLE_DATABASE, 'ai_games_test', 'Explicit disposable database acknowledgement required');
   const database = createDatabase(config, () => {});
+  const migrations = await migrationFiles();
+  async function rollbackTo(id) {
+    let rows = await migrate(database, 'test', 'status');
+    assert.ok(id === null || rows.some(row => row.id === id), 'Rollback target must be applied');
+    while (rows.length && rows.at(-1).id !== id) rows = await migrate(database, 'test', 'down');
+    assert.equal(rows.at(-1)?.id ?? null, id);
+  }
+  // Once deletion evidence exists, migration 012 correctly blocks all rollback.
+  // Exercise earlier data guards directly in an always-rolled-back transaction,
+  // preserving the ledger and the complete current schema for business tests.
+  async function earlierRollbackRefuses(id, message) {
+    const migration = migrations.find(item => item.id === id);
+    assert.ok(migration);
+    const client = await database.connect();
+    try {
+      await client.query('BEGIN');
+      await assert.rejects(client.query(migration.down), message);
+    } finally {
+      await client.query('ROLLBACK');
+      client.release();
+    }
+  }
   try {
     const existing = await database.query("SELECT to_regnamespace('platform') AS schema");
     assert.equal(existing.rows[0].schema, null, 'Use a fresh test database; existing data is never erased by setup');
@@ -28,19 +50,10 @@ test('PostgreSQL: concurrent migration, empty rollback, reapply, audit persisten
     // Identity cases are run after rollback checks because they intentionally retain audit data.
     assert.equal(await databaseReady(database, 'development'), false);
     await assert.rejects(migrate(database, 'development', 'up'), /environment mismatch/);
-    await migrate(database, 'test', 'down'); // AI provider
-    await migrate(database, 'test', 'down'); // support lifecycle
-    await migrate(database, 'test', 'down'); // phase 7
-    await migrate(database, 'test', 'down'); // phase 6
-    await migrate(database, 'test', 'down'); // phase 5
-    await migrate(database, 'test', 'down'); // phase 4
-    await migrate(database, 'test', 'down'); // phase 3, empty upload tables
-    await migrate(database, 'test', 'down');
-    await migrate(database, 'test', 'down');
+    await rollbackTo('002_security_audit');
     assert.equal(await databaseReady(database, 'test'), false);
-    await migrate(database, 'test', 'down');
-    assert.equal(await databaseReady(database, 'test'), false);
-    await migrate(database, 'test', 'down');
+    await rollbackTo(null);
+    assert.equal((await database.query("SELECT to_regnamespace('platform') AS schema")).rows[0].schema, null);
     await migrate(database, 'test', 'up');
     const event = { action: 'system.error', requestId: randomUUID(), outcome: 'failure' };
     const id = await appendAudit(database, event);
@@ -48,16 +61,7 @@ test('PostgreSQL: concurrent migration, empty rollback, reapply, audit persisten
     assert.equal(result.rows[0].request_id, event.requestId);
     assert.equal(result.rows[0].retention_class, 'general_error_30d');
     assert.ok(result.rows[0].expires_at > result.rows[0].occurred_at);
-    await migrate(database, 'test', 'down'); // AI provider
-    await migrate(database, 'test', 'down'); // support lifecycle
-    await migrate(database, 'test', 'down'); // phase 7
-    await migrate(database, 'test', 'down'); // phase 6
-    await migrate(database, 'test', 'down'); // phase 5
-    await migrate(database, 'test', 'down'); // phase 4
-    await migrate(database, 'test', 'down'); // phase 3
-    await migrate(database, 'test', 'down');
-    await migrate(database, 'test', 'down');
-    await migrate(database, 'test', 'down');
+    await rollbackTo('001_foundation');
     await assert.rejects(migrate(database, 'test', 'down'), /audit history is not empty/);
     await migrate(database, 'test', 'up');
     const securityId = await appendSecurityAudit(database, { action: 'access.denied', requestId: randomUUID(),
@@ -66,43 +70,21 @@ test('PostgreSQL: concurrent migration, empty rollback, reapply, audit persisten
     assert.equal(security.retention_class, 'security_6m');
     assert.equal(security.correct_expiry, true);
     await assert.rejects(database.query("INSERT INTO platform.security_events (id, action, request_id, outcome) VALUES ($1, 'access.granted', $2, 'failure')", [randomUUID(), randomUUID()]));
-    await migrate(database, 'test', 'down'); // AI provider
-    await migrate(database, 'test', 'down'); // support lifecycle
-    await migrate(database, 'test', 'down'); // phase 7
-    await migrate(database, 'test', 'down'); // phase 6
-    await migrate(database, 'test', 'down'); // phase 5
-    await migrate(database, 'test', 'down'); // phase 4
-    await migrate(database, 'test', 'down'); // phase 3
-    await migrate(database, 'test', 'down');
-    await migrate(database, 'test', 'down');
+    await rollbackTo('002_security_audit');
     await assert.rejects(migrate(database, 'test', 'down'), /security audit history is not empty/);
     await migrate(database, 'test', 'up');
     assert.equal(await databaseReady(database, 'test'), true);
     await identityCases(database);
-    await migrate(database, 'test', 'down'); // AI provider
-    await migrate(database, 'test', 'down'); // support lifecycle
-    await migrate(database, 'test', 'down'); // phase 7
-    await migrate(database, 'test', 'down'); // phase 6
-    await migrate(database, 'test', 'down'); // phase 5
-    await migrate(database, 'test', 'down'); // phase 4
-    await migrate(database, 'test', 'down'); // phase 3 remains empty
-    await migrate(database, 'test', 'down');
-    await assert.rejects(migrate(database, 'test', 'down'), /identity data is not empty/);
-    await migrate(database, 'test', 'up');
+    const ledger = (await database.query('SELECT * FROM platform.recovery_ledger ORDER BY kind,id')).rows;
+    assert.ok(ledger.some(row => row.kind === 'account'));
+    await assert.rejects(migrate(database, 'test', 'down'), /Recovery evidence cannot be discarded/);
+    assert.deepEqual((await database.query('SELECT * FROM platform.recovery_ledger ORDER BY kind,id')).rows, ledger);
+    assert.equal(await databaseReady(database, 'test'), true);
+    await earlierRollbackRefuses('003_identity', /identity data is not empty/);
     await uploadCases(database);
-    await migrate(database, 'test', 'down'); // AI provider
-    await migrate(database, 'test', 'down'); // support lifecycle
-    await migrate(database, 'test', 'down'); // phase 7
-    await migrate(database, 'test', 'down'); // phase 6
-    await migrate(database, 'test', 'down'); // phase 5
-    await assert.rejects(migrate(database, 'test', 'down'), /discovery data is not empty/);
-    await migrate(database, 'test', 'up');
+    await earlierRollbackRefuses('006_discovery', /discovery data is not empty/);
     await communityCases(database);
-    await migrate(database, 'test', 'down'); // AI provider
-    await migrate(database, 'test', 'down'); // support lifecycle
-    await migrate(database, 'test', 'down'); // phase 7
-    await assert.rejects(migrate(database, 'test', 'down'), /Competition history is not empty/);
-    await migrate(database, 'test', 'up');
+    await earlierRollbackRefuses('008_competition', /Competition history is not empty/);
     await operationsCases(database);
     await localIdentityCases(database);
     await collectionCases(database);
