@@ -5,7 +5,18 @@ function Evaluate([string]$script){$encoded=[Convert]::ToBase64String([Text.Enco
 function Check([string]$script){$result=Evaluate $script;if(($result -join '').Trim() -ne 'true'){throw "Browser assertion failed: $script ($result)"}}
 function WaitNotice([string]$message){Write-Host "Checking notice: $message";Browser wait --fn "document.querySelector('#notice').textContent.includes('$message')" | Out-Null}
 function ClickGame([string]$name){$snapshot=(Browser snapshot -i)-join "`n";$pattern='button "'+[regex]::Escape($name)+'" \[ref=(e\d+)\]';$match=[regex]::Match($snapshot,$pattern);if(-not $match.Success){throw "Game button missing: $name"};Browser click ('@'+$match.Groups[1].Value) | Out-Null}
-function Scenario([string]$name){Evaluate "fetch('/__fixture?scenario=$name',{method:'POST'}).then(r=>r.ok)" | Out-Null;ClickGame '重试'}
+function Scenario([string]$name){
+ Evaluate "fetch('/__fixture?scenario=$name',{method:'POST'}).then(r=>r.ok)" | Out-Null
+ $state=(Evaluate "document.querySelector('#stage').dataset.state") -join ''
+ switch ($state.Trim('"')) {
+  'ready' {
+   Evaluate "document.querySelector('.play-options').open=true" | Out-Null
+   ClickGame '重新开始（保留存档）'
+  }
+  'exited' {ClickGame '再次试玩'}
+  default {ClickGame '重试'}
+ }
+}
 $url='http://127.0.0.1:4330/play?work=11111111-1111-4111-8111-111111111111'
 Browser open 'http://127.0.0.1:4330/studio' | Out-Null
 Evaluate "fetch('/__fixture?scenario=normal',{method:'POST'}).then(()=>{localStorage.removeItem('game-save:11111111-1111-4111-8111-111111111111:v2');return true})" | Out-Null

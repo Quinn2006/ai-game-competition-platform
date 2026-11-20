@@ -1,1 +1,32 @@
-<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>游戏试玩</title><link rel="stylesheet" href="/games/style.css"><link rel="stylesheet" href="/catalog/campus.css"><script type="module" src="/games/ui.mjs"></script><link rel="stylesheet" href="/catalog/navigation.css"><script type="module" src="/catalog/navigation.mjs"></script><nav class="platform-nav" aria-label="平台导航"><a class="platform-brand" href="/">小游戏实验场<span>广大校园 · AI 创作与交流</span></a><div class="platform-links" tabindex="0" aria-label="页面入口，可横向滚动"><a href="/">发现</a><a href="/account">我的账号</a></div></nav><header class="campus-page-heading"><a href="/studio">作品工作台</a><h1 id="title">游戏试玩</h1><p>存档仅保存在当前浏览器。使用第一方匿名标识统计有效试玩，普通信号保留30天。请用“退出试玩”完成计数；异常中断不计。</p></header><main><p id="notice" role="status" aria-live="polite">正在准备游戏…</p><progress id="loading"></progress><div id="stage"><iframe id="game" title="游戏试玩" sandbox="allow-scripts" allow="autoplay; fullscreen" allowfullscreen></iframe></div><div class="actions"><button id="retry">重试</button><button id="restart">重新开始（保留存档）</button><button id="clear">清除当前存档</button><button id="sound">开启音效</button><button id="fullscreen">全屏</button><button id="share">复制分享链接</button><button id="exit">退出试玩</button></div><div id="qr"></div><p id="direction"></p></main></html>
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>游戏试玩</title><link rel="stylesheet" href="/catalog/campus.css"><link rel="stylesheet" href="/games/style.css"><script type="module" src="/games/ui.mjs"></script><link rel="stylesheet" href="/catalog/navigation.css"><script type="module" src="/catalog/navigation.mjs"></script><nav class="platform-nav" aria-label="平台导航"><a class="platform-brand" href="/">小游戏实验场<span>广大校园 · AI 创作与交流</span></a><div class="platform-links" tabindex="0" aria-label="页面入口，可横向滚动"><a href="/">发现</a><a href="/account">我的账号</a></div></nav>
+<main class="play-main">
+  <div id="stage" data-state="loading">
+    <div class="play-heading">
+      <h1 id="title">游戏试玩</h1>
+      <span id="direction"></span>
+    </div>
+    <div class="play-screen">
+      <iframe id="game" title="游戏试玩" sandbox="allow-scripts" allow="autoplay; fullscreen" allowfullscreen></iframe>
+    </div>
+    <div class="play-feedback">
+      <p id="notice" role="status" aria-live="polite">正在准备游戏…</p>
+      <progress id="loading" aria-label="游戏加载进度"></progress>
+      <button id="retry" hidden>重试</button>
+    </div>
+    <div class="play-toolbar" role="group" aria-label="试玩控制">
+      <button id="fullscreen">全屏</button>
+      <button id="sound" disabled>开启音效</button>
+      <button id="exit">退出试玩</button>
+    </div>
+  </div>
+  <details class="play-options">
+    <summary>存档与分享</summary>
+    <div class="option-grid">
+      <div><h2>本地存档</h2><p>进度保存在当前浏览器中。</p>
+        <button id="restart" disabled>重新开始（保留存档）</button><button id="clear" disabled>清除当前存档</button>
+      </div>
+      <div><h2>分享游戏</h2><div id="qr"></div><button id="share">复制分享链接</button></div>
+    </div>
+    <p>平台使用第一方匿名标识统计有效试玩，普通信号保留 30 天。请用“退出试玩”完成计数，异常中断不计。</p>
+  </details>
+</main></html>

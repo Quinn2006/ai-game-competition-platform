@@ -7,9 +7,55 @@ function node(tag,text,cls){const e=document.createElement(tag);if(text!==undefi
 function link(text,url){const e=node('a',text);e.href=url;return e;}
 function message(text,error=false){$('#status').textContent=text;$('#status').className=error?'error':'';}
 async function api(action,input,post=false){const r=await fetch('/api/discovery/'+action+(post?'':input?'?'+new URLSearchParams(input):''),post?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input??{})}:{});const data=await r.json();if(!r.ok)throw Error(data.error?.message??'加载失败，请重试');return data;}
-function cover(work){const box=node('div',undefined,'cover');box.append(node('span','PLAY'));if(/^data:image\/(png|jpeg|webp);base64,/.test(work.cover??'')){const img=node('img');img.src=work.cover;img.alt=work.title+'封面';img.addEventListener('error',()=>img.remove());box.append(img);}return box;}
+function cover(work){
+  const box=node('div',undefined,'cover');
+  box.dataset.palette=String((work.title.codePointAt(0)??0)%3);
+  const mark=node('span',Array.from(work.title).slice(0,2).join(''));
+  mark.setAttribute('aria-hidden','true');
+  box.append(mark);
+  if(/^data:image\/(png|jpeg|webp);base64,/.test(work.cover??'')){
+    const img=node('img');img.src=work.cover;img.alt=work.title+'封面';
+    img.addEventListener('error',()=>img.remove());box.append(img);
+  }
+  return box;
+}
 function author(work){return work.team?link(work.team.name,'/team?id='+work.team.id):link(work.author.nickname,'/author?id='+work.author.id);}
-function card(work){const c=node('article',undefined,'card '+(work.featured?'work-featured':'work-normal')),body=node('div',undefined,'card-content');c.append(cover(work),body);const tags=node('div',undefined,'tagline');for(const t of [work.featured?'精选':'正常',work.category,...work.tags])tags.append(node('span',t));const title=node('h3');title.append(link(work.title,'/work?id='+work.id));body.append(tags,title,node('p',work.summary,'summary'));const by=node('div',undefined,'byline');by.append(author(work));const stats=node('div',undefined,'stats');stats.append(node('span','点赞 '+(work.likes??'暂无统计')),node('span','有效试玩 '+(work.plays??'暂无统计')));body.append(by,stats);return c;}
+function card(work){
+  const c=node('article',undefined,'card '+(work.featured?'work-featured':'work-normal'));
+  const body=node('div',undefined,'card-content'),title=node('h3'),tags=node('div',undefined,'tagline');
+  const destination='/work?id='+encodeURIComponent(work.id);
+  const thumbnail=link('',destination);
+  thumbnail.className='thumbnail';thumbnail.setAttribute('aria-label','查看作品：'+work.title);thumbnail.append(cover(work));
+  for(const t of [work.featured?'精选':'正常',work.category,...work.tags])tags.append(node('span',t));
+  title.append(link(work.title,destination));
+  const by=node('div',undefined,'byline');by.append(author(work));
+  const stats=node('div',undefined,'stats');
+  stats.append(node('span','点赞 '+(work.likes??'暂无统计')),node('span','有效试玩 '+(work.plays??'暂无统计')));
+  body.append(tags,title,node('p',work.summary,'summary'),by,stats);c.append(thumbnail,body);
+  return c;
+}
+
+function addPlayer(panel,work){
+  const launch=node('div',undefined,'play-launch');
+  const start=node('button','开始试玩','primary');
+  const url=new URL('/play',location.origin);url.searchParams.set('work',work.id);
+  const bar=node('div',undefined,'play-entry');
+  bar.append(start,link('打开独立试玩页 ↗',url.pathname+url.search));
+  launch.append(cover(work),bar);panel.append(launch);
+  start.onclick=()=>{
+    const frame=node('iframe');frame.title='试玩 '+work.title;frame.allow='autoplay; fullscreen';
+    url.searchParams.set('embed','1');frame.src=url.href;
+    frame.addEventListener('load',()=>{
+      const player=frame.contentDocument?.querySelector('.play-main');
+      if(!player)return;
+      // The host and player shell share an origin. The game stays in its isolated inner frame.
+      const resize=()=>{frame.height=String(Math.ceil(player.getBoundingClientRect().height));};
+      new ResizeObserver(resize).observe(player);resize();
+    },{once:true});
+    launch.firstElementChild.replaceWith(frame);start.remove();
+    frame.focus();
+  };
+}
 function terms(target,items){target.replaceChildren();for(const item of items){const b=node('button',item.term);b.type='button';b.onclick=()=>{$('#query').value=item.term;$('#search').requestSubmit();};target.append(b);}}
 async function history(){try{terms($('#history'),user?(await api('history')).terms:readHistory(localStorage));$('#history-note').textContent=user?'仅当前账号可见，最多保存 10 条，90 天到期。':'游客历史保存在此浏览器，最多保存 10 条，90 天到期。';}catch{message('搜索历史暂时不可用',true);}}
 async function load(append=false){
@@ -48,10 +94,16 @@ async function init(){
   }
   if(path==='/work'){
     const work=await api('detail',{id:params.get('id')});$('#title').textContent=work.title;document.title=work.title+' · 小游戏实验场';$('#intro').textContent=work.category;
-    const panel=$('#detail');panel.hidden=false;panel.append(cover(work),author(work),node('h2','游戏简介'),node('p',work.summary),node('h2','操作说明'),node('p',work.instructions));
+    const panel=$('#detail');panel.hidden=false;
+    $('#intro').append(document.createTextNode(' · '),author(work));
     const capabilities=await api('capabilities');
-    if(capabilities.play){const frame=node('iframe');frame.title='试玩 '+work.title;frame.src='/play?embed=1&work='+encodeURIComponent(work.id);frame.width='100%';frame.height='650';frame.allow='autoplay; fullscreen';panel.append(frame,link('打开独立试玩页','/play?work='+encodeURIComponent(work.id)));}
-    else panel.append(node('p','试玩服务暂未开放。','muted'));
+    if(capabilities.play)addPlayer(panel,work);
+    else panel.append(cover(work),node('p','试玩服务暂未开放。','muted'));
+    const info=node('div',undefined,'work-info');
+    for(const [label,value] of [['操作说明',work.instructions],['游戏简介',work.summary]]){
+      const block=node('div');block.append(node('h2',label),node('p',value));info.append(block);
+    }
+    panel.append(info);
     const community=document.createElement('section');panel.append(community);await mountCommunity(community,work.id);
     return;
   }

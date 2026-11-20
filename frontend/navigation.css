@@ -9,3 +9,18 @@
 .platform-nav :focus-visible{outline:3px solid #9b5c24;outline-offset:2px}
 .platform-nav[hidden]{display:none!important}
 @media(max-width:600px){.platform-nav{padding:16px 16px 0}.platform-nav .platform-links{gap:0 18px}.platform-nav .platform-brand{font-size:20px}}
+
+@media(min-width:840px){
+  .platform-nav{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:30px;padding:12px 32px}
+  .platform-nav .platform-brand{margin:0;padding-right:24px;border-right:1px solid #cdd9cc}
+  .platform-nav .platform-links{gap:4px;padding:4px}
+}
+.platform-nav .platform-links>a{padding-inline:9px;border-radius:7px}
+.platform-nav .platform-links>a[aria-current=page]{background:#e2ecdb;border-bottom-color:#41664b;color:#234a38;font-weight:650}
+.platform-nav .platform-links>a:hover{background:#eef3e8;color:#244f40}
+@media(max-width:839px){
+  .platform-nav{padding-top:10px}
+  .platform-nav .platform-brand{display:flex;align-items:baseline;gap:10px;margin-bottom:4px}
+  .platform-nav .platform-brand span{letter-spacing:0;margin:0}
+  .platform-nav .platform-links{gap:2px;padding-bottom:5px}
+}

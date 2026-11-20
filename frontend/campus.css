@@ -33,10 +33,8 @@ body:has(#create) main{display:grid;grid-template-columns:minmax(240px,.75fr) mi
 body:has(#create) main>#notice,body:has(#create) main>#editor{grid-column:1/-1}
 body:has(#create) main>section{margin:0;align-self:start;padding:28px}
 body:has(#create) main>#notice{margin:0}
-body:has(#create) button,body:has(#stage) button{background:var(--campus-green);color:white}
+body:has(#create) button{background:var(--campus-green);color:white}
 body:has(#create) #refresh{background:#f0f4eb;color:var(--campus-green)}
-body:has(#stage) #stage{border-radius:14px;overflow:hidden;border:1px solid #315348}
-body:has(#stage) .actions{gap:8px;margin:20px 0}
 body:has(#contest) main>nav,body:has(>#community) main>nav{font-size:13px}
 main:has(>#community){max-width:1072px;padding:28px 32px;margin:28px auto;background:#fff;border:1px solid var(--campus-line);border-radius:18px}
 #community.community{margin:0;padding:8px 0;max-width:none;min-height:180px}
@@ -58,5 +56,5 @@ details>summary{white-space:normal}
 .work-featured{border-left:5px solid #a77014!important;background:#fff5d8!important;color:#6d480b!important}
 .work-hidden{border-left:5px solid #b34a48!important;background:#fff0ee!important;color:#8b302c!important}
 .work-state{display:inline-block;font-size:13px;font-weight:650;padding:4px 9px;border-radius:5px}
-@media(max-width:760px){.campus-nav{align-items:flex-start;flex-direction:column;padding:20px;gap:14px}.campus-nav>div{gap:4px 20px}.campus-page-heading{margin:20px 16px 8px;padding:24px}body:has(#create) main{grid-template-columns:1fr;padding:16px}body:has(#create) main>section{padding:22px}body:has(#nav) main{margin-top:16px}body:has(#nav) header{padding-top:16px}body:has(#confirm)>header{padding:16px 20px}main:has(>#community){margin:20px 16px;padding:22px}.campus-nav>div>a{font-size:13px}body:has(#stage) .actions button{flex:1 1 140px}.campus-page-heading h1{font-size:28px}}
+@media(max-width:760px){.campus-nav{align-items:flex-start;flex-direction:column;padding:20px;gap:14px}.campus-nav>div{gap:4px 20px}.campus-page-heading{margin:20px 16px 8px;padding:24px}body:has(#create) main{grid-template-columns:1fr;padding:16px}body:has(#create) main>section{padding:22px}body:has(#nav) main{margin-top:16px}body:has(#nav) header{padding-top:16px}body:has(#confirm)>header{padding:16px 20px}main:has(>#community){margin:20px 16px;padding:22px}.campus-nav>div>a{font-size:13px}.campus-page-heading h1{font-size:28px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important;scroll-behavior:auto!important}}

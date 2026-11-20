@@ -88,18 +88,58 @@ if($('#works')) {
     await refresh();const requested=new URLSearchParams(location.search).get('work');if(requested)await select(requested);});
 } else {
   const frame=$('#game'),workId=new URL(location.href).searchParams.get('work');let port,timer,heartbeat,last=0,seq=0,saveKey,ready=false,rateStart=0,rateCount=0,generation=0;
+  const stage=$('#stage'),shareUrl=new URL(location.href);
+  shareUrl.searchParams.delete('embed');
+  document.body.classList.toggle('play-embedded',window.parent!==window);
+  function setState(state,message){
+    stage.dataset.state=state;
+    $('#loading').hidden=state!=='loading';
+    $('#retry').hidden=state!=='failed'&&state!=='exited';
+    $('#retry').textContent=state==='exited'?'再次试玩':'重试';
+    $('#sound').disabled=$('#restart').disabled=$('#clear').disabled=state!=='ready';
+    $('#exit').disabled=state==='exited'||state==='failed';
+    notice(message);
+  }
   const qr=document.createElement('img');qr.alt='游戏分享二维码';qr.width=160;qr.height=160;qr.src='/api/games/qr?work='+encodeURIComponent(workId);$('#qr').append(qr);
   let playToken=null,playSequence=0,interacted=false,signalChain=Promise.resolve();
   function signal(kind='tick'){const token=playToken;if(!token)return;const input={token,sequence:++playSequence,kind,foreground:!document.hidden,interacted,healthy:ready&&Date.now()-last<5000};signalChain=signalChain.then(()=>communityApi('signal',input)).catch(()=>{});if(kind!=='tick')playToken=null;}
   function stop(){signal('end');generation++;clearTimeout(timer);clearInterval(heartbeat);port?.close();frame.onload=null;ready=false;}
-  function failed(message){signal('error');stop();frame.src='about:blank';$('#loading').hidden=true;notice(message+'，可点击重试。');}
-  async function start(){stop();const current=generation;frame.src='about:blank';$('#loading').hidden=false;$('#loading').removeAttribute('value');notice('正在加载…');let config;try{const response=await fetch('/api/games/play?work='+encodeURIComponent(workId));config=await response.json();if(!response.ok)throw new Error(config.error.message);const session=await communityApi('start',{workId});if(current!==generation){const token=session.token;if(token)communityApi('signal',{token,sequence:1,kind:'error',foreground:false,interacted:false,healthy:false}).catch(()=>{});return;}playToken=session.token;playSequence=0;interacted=false;}catch(error){if(current===generation)failed(error.message);return;}if(current!==generation)return;$('#title').textContent=config.title;$('#direction').textContent=config.orientation==='portrait'?'建议竖屏游玩':'建议横屏游玩';saveKey='game-save:'+workId+':'+config.saveVersion;seq=0;rateStart=Date.now();rateCount=0;
+  function failed(message){signal('error');stop();frame.src='about:blank';setState('failed',message+'，可点击重试。');}
+  async function start(){
+    stop();
+    const current=generation;
+    frame.src='about:blank';
+    $('#loading').removeAttribute('value');
+    setState('loading','正在加载…');
+    let config;
+    try{
+      const response=await fetch('/api/games/play?work='+encodeURIComponent(workId));
+      config=await response.json();
+      if(!response.ok)throw new Error(config.error.message);
+      if(current!==generation)return;
+      const session=await communityApi('start',{workId});
+      if(current!==generation){
+        if(session.token)communityApi('signal',{token:session.token,sequence:1,kind:'error',foreground:false,interacted:false,healthy:false}).catch(()=>{});
+        return;
+      }
+      playToken=session.token;playSequence=0;interacted=false;
+    }catch(error){
+      if(current===generation)failed(error.message);
+      return;
+    }
+    stage.dataset.orientation=config.orientation;
+    $('#title').textContent=config.title;
+    document.title=config.title+' · 游戏试玩';
+    frame.title='试玩 '+config.title;
+    $('#direction').textContent=config.orientation==='portrait'?'建议竖屏游玩':'建议横屏游玩';
+    saveKey='game-save:'+workId+':'+config.saveVersion;
+    seq=0;rateStart=Date.now();rateCount=0;
     frame.onload=()=>{if(current!==generation)return;port?.close();const channel=new MessageChannel();port=channel.port1;port.onmessage=event=>{
       if(current!==generation)return;
       const msg=event.data,now=Date.now();if(now-rateStart>1000){rateStart=now;rateCount=0;}if(++rateCount>60)return;
       if(!msg||!Number.isSafeInteger(msg.seq)||msg.seq<=seq||!['interaction','ready','heartbeat','progress','error','save','load','external','sound:blocked'].includes(msg.type))return;seq=msg.seq;
       if(msg.type==='interaction')interacted=true;
-      if(msg.type==='ready'){ready=true;last=now;clearTimeout(timer);$('#loading').hidden=true;notice('游戏已加载。');}
+      if(msg.type==='ready'){ready=true;last=now;clearTimeout(timer);if(stage.dataset.state!=='ready')setState('ready','游戏已加载。');}
       if(msg.type==='heartbeat')last=now;
       if(msg.type==='error')failed('游戏报告运行错误');
       if(msg.type==='progress'&&Number.isFinite(msg.value)&&msg.value>=0&&msg.value<=100){$('#loading').max=100;$('#loading').value=msg.value;}
@@ -109,5 +149,31 @@ if($('#works')) {
       if(msg.type==='external'&&typeof msg.value==='string'&&msg.value.length<=2048){let url;try{url=new URL(msg.value);}catch{return;}if(!['https:','http:'].includes(url.protocol)||url.username||url.password)return;const open=button('打开外部链接：'+url.hostname,()=>{if(confirm('即将离开本站，打开 '+url.href))window.open(url.href,'_blank','noopener,noreferrer');open.remove();});$('#notice').replaceChildren(open);}
     };frame.contentWindow.postMessage({type:'platform:init'},'*',[channel.port2]);};frame.src=config.src;timer=setTimeout(()=>failed('加载超时'),config.loadTimeout);heartbeat=setInterval(()=>{if(ready)signal();if(ready&&!document.hidden&&Date.now()-last>10000)failed('游戏响应中断');},2000);
   }
-  $('#retry').onclick=$('#restart').onclick=()=>safe(start);$('#clear').onclick=()=>{if(saveKey&&confirm('清除当前作品此存档版本的进度？旧版本存档将保留。')){localStorage.removeItem(saveKey);safe(start);}};$('#sound').onclick=()=>port?.postMessage({type:'sound'});$('#fullscreen').onclick=()=>safe(async()=>{if(!document.fullscreenEnabled)throw new Error('当前浏览器不支持全屏');await $('#stage').requestFullscreen();});$('#share').onclick=()=>safe(async()=>{await navigator.clipboard.writeText(location.href);notice('分享链接已复制。');});$('#exit').onclick=()=>{if(confirm('确认退出试玩？')){stop();frame.src='about:blank';$('#loading').hidden=true;notice('已退出试玩。');}};document.addEventListener('visibilitychange',()=>{signal();last=Date.now();});window.addEventListener('pagehide',()=>signal('end'));safe(start);
+  $('#retry').onclick=$('#restart').onclick=()=>safe(start);
+  $('#clear').onclick=()=>safe(async()=>{
+    if(saveKey&&confirm('清除当前作品此存档版本的进度？旧版本存档将保留。')){
+      localStorage.removeItem(saveKey);await start();
+    }
+  });
+  $('#sound').onclick=()=>{
+    notice('已请求开启音效。');port?.postMessage({type:'sound'});
+  };
+  $('#fullscreen').disabled=!document.fullscreenEnabled;
+  if(!document.fullscreenEnabled)$('#fullscreen').title='当前浏览器不支持全屏';
+  $('#fullscreen').onclick=()=>safe(async()=>{
+    if(document.fullscreenElement===stage)await document.exitFullscreen();
+    else await stage.requestFullscreen();
+  });
+  document.addEventListener('fullscreenchange',()=>{
+    $('#fullscreen').textContent=document.fullscreenElement===stage?'退出全屏':'全屏';
+  });
+  $('#share').onclick=()=>safe(async()=>{
+    await navigator.clipboard.writeText(shareUrl.href);notice('分享链接已复制。');
+  });
+  $('#exit').onclick=()=>{
+    if(confirm('确认退出试玩？')){
+      stop();frame.src='about:blank';setState('exited','已退出试玩。');$('#retry').focus();
+    }
+  };
+  document.addEventListener('visibilitychange',()=>{signal();last=Date.now();});window.addEventListener('pagehide',()=>signal('end'));safe(start);
 }
