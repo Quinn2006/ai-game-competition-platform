@@ -15,7 +15,12 @@
     setInterval(()=>send('heartbeat'),1000);
     document.querySelectorAll('audio,video').forEach(media=>media.play().catch(()=>send('sound:blocked')));
   });
-  for(const type of ['pointerdown','keydown','touchstart'])document.addEventListener(type,e=>{if(e.isTrusted)send('interaction');},true);
+  for(const type of ['pointerdown','keydown','touchstart'])document.addEventListener(type,e=>{
+    if(!e.isTrusted)return;
+    // Canvas games can cancel pointerdown and suppress the browser's default focus change.
+    if(type==='pointerdown'&&!document.hasFocus())window.focus();
+    send('interaction');
+  },true);
   window.addEventListener('error',()=>{earlyError=true;send('error');});
   window.addEventListener('unhandledrejection',()=>{earlyError=true;send('error');});
   document.addEventListener('click',event=>{
