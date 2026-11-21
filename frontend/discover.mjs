@@ -41,16 +41,23 @@ function addPlayer(panel,work){
   const url=new URL('/play',location.origin);url.searchParams.set('work',work.id);
   const bar=node('div',undefined,'play-entry');
   bar.append(start,link('打开独立试玩页 ↗',url.pathname+url.search));
-  launch.append(cover(work),bar);panel.append(launch);
+  const poster=cover(work);
+  launch.append(poster,bar);panel.append(launch);
   start.onclick=()=>{
     const frame=node('iframe');frame.title='试玩 '+work.title;frame.allow='autoplay; fullscreen';
     url.searchParams.set('embed','1');frame.src=url.href;
+    let observer;
+    frame.addEventListener('play-exit',()=>{
+      observer?.disconnect();
+      frame.replaceWith(poster);
+      bar.prepend(start);start.focus();
+    },{once:true});
     frame.addEventListener('load',()=>{
       const player=frame.contentDocument?.querySelector('.play-main');
       if(!player)return;
       // The host and player shell share an origin. The game stays in its isolated inner frame.
       const resize=()=>{frame.height=String(Math.ceil(player.getBoundingClientRect().height));};
-      new ResizeObserver(resize).observe(player);resize();
+      observer=new ResizeObserver(resize);observer.observe(player);resize();
     },{once:true});
     launch.firstElementChild.replaceWith(frame);start.remove();
     frame.focus();

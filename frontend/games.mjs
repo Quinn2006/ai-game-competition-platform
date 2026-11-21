@@ -97,7 +97,7 @@ if($('#works')) {
     $('#retry').hidden=state!=='failed'&&state!=='exited';
     $('#retry').textContent=state==='exited'?'再次试玩':'重试';
     $('#sound').disabled=$('#restart').disabled=$('#clear').disabled=state!=='ready';
-    $('#exit').disabled=state==='exited'||state==='failed';
+    $('#exit').disabled=state==='exited'||(state==='failed'&&!window.frameElement);
     notice(message);
   }
   const qr=document.createElement('img');qr.alt='游戏分享二维码';qr.width=160;qr.height=160;qr.src='/api/games/qr?work='+encodeURIComponent(workId);$('#qr').append(qr);
@@ -170,9 +170,14 @@ if($('#works')) {
   $('#share').onclick=()=>safe(async()=>{
     await navigator.clipboard.writeText(shareUrl.href);notice('分享链接已复制。');
   });
-  $('#exit').onclick=()=>{
+  $('#exit').onclick=async()=>{
     if(confirm('确认退出试玩？')){
       stop();frame.src='about:blank';setState('exited','已退出试玩。');$('#retry').focus();
+      const exitedGeneration=generation;
+      if(window.frameElement){
+        await signalChain;
+        if(generation===exitedGeneration)window.frameElement?.dispatchEvent(new Event('play-exit'));
+      }
     }
   };
   document.addEventListener('visibilitychange',()=>{signal();last=Date.now();});window.addEventListener('pagehide',()=>signal('end'));safe(start);

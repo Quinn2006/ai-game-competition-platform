@@ -35,10 +35,12 @@ fieldset{min-width:0;border:1px solid #d9e1e9;border-radius:8px;padding:16px}leg
 .option-grid button{margin:3px;background:#edf3e7;color:#244c3a}
 .option-grid #clear{color:#883d31;background:#fff8f4}
 .option-grid #qr img{width:100px;height:100px}
-.play-embedded{background:transparent;min-height:0}
+.play-embedded{background:transparent;min-height:0;--landscape-height-limit:480px}
 .play-embedded .play-main{padding:0;max-width:none}
 .play-embedded .play-main #stage{border-radius:0}
 .play-embedded .play-screen{height:min(56.25vw,560px)}
+/* Keep game menus reachable on narrow pages and short landscape screens. */
+#stage[data-orientation="landscape"]:not(:fullscreen) .play-screen{min-height:min(var(--landscape-height-limit,100dvh),clamp(280px,56.25vw,480px))}
 .play-embedded [data-orientation="portrait"] .play-screen{height:min(155vw,610px)}
 .play-embedded .play-options{margin:0;border-radius:0;border-width:0 0 1px}
 .play-main #stage:fullscreen{width:100%;height:100%;border:0;border-radius:0;grid-template-rows:auto minmax(0,1fr) auto}
